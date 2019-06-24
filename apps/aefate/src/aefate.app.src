@@ -7,6 +7,11 @@
     stdlib,
     lager,
     aebytecode,
+    aens,
+    aeoracle,
+    aeprimop,
+    aetx,
+    aeutils,
     getopt
    ]},
   {env,[]},
