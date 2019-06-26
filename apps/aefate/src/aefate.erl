@@ -8,7 +8,6 @@
 -export([main/1]).
 
 -include_lib("aecontract/include/hard_forks.hrl").
--include_lib("aecore/include/blocks.hrl").
 -include_lib("aeminer/include/aeminer.hrl").
 
 -define(OPT_SPEC,
@@ -100,17 +99,17 @@ load_file(FileName, Opts) ->
             end
     end.
 
-print_after_run(true, Code, Chain, Env) ->
+print_after_run(true, Code,_PreEnv, Env) ->
     io:format("Code: ~0p~n", [Code]),
-    %% io:format("Chain: ~0p~n", [Chain]),
+    %% io:format("PreEnv: ~0p~n", [PreEnv]),
     io:format("Env: ~0p~n", [Env]).
 
 tx_env() ->
     Height = 1,
-    RootHash =  <<0:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-    PrevHash =  <<1:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-    PrevKeyHash =  <<2:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
-    KeyHash =  <<3:?BLOCK_HEADER_HASH_BYTES/unit:8>>,
+    RootHash    =  <<0:256>>,
+    PrevHash    =  <<1:256>>,
+    PrevKeyHash =  <<2:256>>,
+    KeyHash     =  <<3:256>>,
     Miner = 0,
     Beneficiary =  aec_block_genesis:beneficiary(),
     Target = aeminer_pow:integer_to_scientific(1),
