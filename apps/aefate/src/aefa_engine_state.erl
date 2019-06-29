@@ -7,6 +7,7 @@
 -module(aefa_engine_state).
 
 -export([ new/6
+        , new/7
         , finalize/1
         ]).
 
@@ -28,7 +29,6 @@
         , logs/1
         , memory/1
         , stores/1
-        , trace/1
         ]).
 
 %% Setters
@@ -49,7 +49,6 @@
         , add_log/2
         , set_memory/2
         , set_stores/2
-        , set_trace/2
         ]).
 
 %% More complex stuff
@@ -70,6 +69,8 @@
 
 -ifdef(TEST).
 -export([ add_trace/2
+        , set_trace/2
+        , trace/1
         ]).
 -endif.
 
@@ -78,6 +79,8 @@
 
 -type void_or_fate() :: ?FATE_VOID | aeb_fate_data:fate_type().
 -type pubkey() :: <<_:256>>.
+
+-type trace_iofun() :: fun( (aeb_fate_code:fate_instruction(), state()) -> ok).
 
 -record(es, { accumulator       :: void_or_fate()
             , accumulator_stack :: [aeb_fate_data:fate_type()]
@@ -99,14 +102,25 @@
                                    %% Call stack of contracts (including tail calls)
             , stores            :: aefa_stores:store()
             , trace             :: list()
+            , trace_io          :: trace_iofun()
             }).
+
 
 -opaque state() :: #es{}.
 -export_type([ state/0
+             , trace_iofun/0
              ]).
+
+
 
 -spec new(non_neg_integer(), non_neg_integer(), map(), aefa_stores:store(), aefa_chain_api:state(), map()) -> state().
 new(Gas, Value, Spec, Stores, APIState, CodeCache) ->
+    new(Gas, Value, Spec, Stores, APIState, CodeCache, fun(_,_) -> ok end).
+
+-spec new(non_neg_integer(), non_neg_integer(), map(),
+          aefa_stores:store(), aefa_chain_api:state(), map(),
+          trace_iofun()) -> state().
+new(Gas, Value, Spec, Stores, APIState, CodeCache, TraceIO) ->
     [error({bad_init_arg, X, Y}) || {X, Y} <- [{gas, Gas}, {value, Value}],
                                     not (is_integer(Y) andalso Y >= 0)],
     #es{ accumulator       = ?FATE_VOID
@@ -128,6 +142,7 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache) ->
        , seen_contracts    = []
        , stores            = Stores
        , trace             = []
+       , trace_io          = TraceIO
        }.
 
 -spec finalize(state()) -> state().
@@ -137,11 +152,6 @@ finalize(#es{chain_api = API, stores = Stores} = ES) ->
 %%%===================================================================
 %%% API
 %%%===================================================================
-
--ifdef(TEST).
-add_trace(I, #es{trace = Trace} = ES) ->
-    ES#es{trace = [{I, erlang:process_info(self(), reductions)}|Trace]}.
--endif.
 
 -spec update_for_remote_call(pubkey(), term(), state()) -> state().
 update_for_remote_call(Contract, ContractCode, #es{current_contract = Current} = ES) ->
@@ -464,6 +474,11 @@ set_stores(X, ES) ->
 
 %%%------------------
 
+-ifdef(TEST).
+add_trace(I, #es{trace = Trace} = ES) ->
+    (ES#es.trace_io)(I, ES),
+    ES#es{trace = [{I, erlang:process_info(self(), reductions)}|Trace]}.
+
 -spec trace(state()) -> list().
 trace(#es{trace = X}) ->
     X.
@@ -471,5 +486,4 @@ trace(#es{trace = X}) ->
 -spec set_trace(list(), state()) -> state().
 set_trace(X, ES) ->
     ES#es{trace = X}.
-
-
+-endif.

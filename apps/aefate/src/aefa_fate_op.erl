@@ -136,7 +136,9 @@
         , bytes_to_str/3
         ]).
 
--export([in_auth_context/1]).
+-export([ get_args/2
+        , in_auth_context/1
+        ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
 -include("../../aecontract/include/aecontract.hrl").
@@ -1331,6 +1333,22 @@ ter_op(Op, {To, One, Two, Three}, ES) ->
     {ValueThree, ES3} = get_op_arg(Three, ES2),
     Result = gop(Op, ValueOne, ValueTwo, ValueThree, ES3),
     write(To, Result, ES3).
+
+-spec get_op_args(aeb_fate_code:fate_instruction(),
+                  aefa_engine_state:state()) -> {aeb_fate_data:fate_type_type() | 'none',
+                                                 [aeb_fate_data:fate_type()]}.
+get_args(I,_ES) when is_atom(I)-> {none, []};
+get_args(I, ES) when is_tuple(I)->
+    [Op | DestAndArgs] = tuple_to_list(I),
+    case aeb_fate_opcodes:result_type(aeb_fate_opcodes:m_to_op(Op)) of
+        none ->
+            {Args, _NewES} = get_op_args(DestAndArgs, ES),
+            {none, Args};
+        Type ->
+            [_Dest | ArgsSpecs] = DestAndArgs,
+            {Args, _NewES} = get_op_args(ArgsSpecs, ES),
+            {Type, Args}
+    end.
 
 get_op_args([H|T], ES) ->
     {X, ES1} = get_op_arg(H, ES),

@@ -113,7 +113,8 @@ final_trees(EngineState) ->
 runtime_error(S, A, ES) ->
     Gas = collect_gas_stores(aefa_engine_state:call_stack(ES), 0),
     ES1 = aefa_engine_state:set_gas(Gas, ES),
-    throw({?MODULE, iolist_to_binary(io_lib:format(S, A)), ES1}).
+    ES2 = ?trace(stop, ES1),
+    throw({?MODULE, iolist_to_binary(io_lib:format(S, A)), ES2}).
 
 %% Runtime error messages for dry run and debugging.
 %% Should result on one tyhpe of runtime error and use all gas when
@@ -182,8 +183,10 @@ abort(bad_bytecode, ES) ->
 abort(E) -> throw({add_engine_state, E}).
 
 execute(EngineState) ->
-    Instructions = aefa_engine_state:current_bb_instructions(EngineState),
-    loop(Instructions, EngineState).
+    ES1 = ?trace(start, EngineState),
+    Instructions = aefa_engine_state:current_bb_instructions(ES1),
+    ES2 = loop(Instructions, ES1),
+    ?trace(stop, ES2).
 
 loop(Instructions, EngineState) ->
     case step(Instructions, EngineState) of
@@ -224,13 +227,17 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , gas := Gas
               , value := Value
               , store := Store
-              }, Env, Cache) ->
+              } = Spec, Env, Cache) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
     Contract = aeb_fate_data:make_contract(ContractPubkey),
     Stores = aefa_stores:put_contract_store(ContractPubkey, Store, aefa_stores:new()),
-    ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, aefa_chain_api:new(Env), Cache),
+
+    TraceIo = maps:get(trace_io, Spec, fun(_,_) -> ok end),
+
+    ES1 = aefa_engine_state:new(Gas, Value, Env, Stores, aefa_chain_api:new(Env),
+                                Cache, TraceIo),
     ES2 = set_remote_function(Contract, Function, ES1),
     ES3 = aefa_engine_state:push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
