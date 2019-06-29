@@ -476,7 +476,11 @@ set_stores(X, ES) ->
 
 -ifdef(TEST).
 add_trace(I, #es{trace = Trace} = ES) ->
-    (ES#es.trace_io)(I, ES),
+    case I of
+        start -> ok;
+        stop -> ok;
+        _ ->  (ES#es.trace_io)(I, ES)
+    end,
     ES#es{trace = [{I, erlang:process_info(self(), reductions)}|Trace]}.
 
 -spec trace(state()) -> list().

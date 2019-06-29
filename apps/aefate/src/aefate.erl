@@ -92,10 +92,14 @@ has_option(O, Os) -> proplists:get_bool(O, Os).
 
 trace_io(I, Env) ->
     {ResType, Args} = aefa_fate_op:get_args(I, Env),
-    io:format("~p:~p where args = <~s>~n",
+    ArgToType =
+        io_lib:format("(~s) -> ~p",
+                      [ lists:join(", ",[aeb_fate_data:format(V) || V <- Args]),
+                        ResType]),
+    io:format(" ~-32s | ~-32s | < ~p ...>~n",
               [aeb_fate_pp:format_op(I, #{}),
-               ResType,
-               lists:join(", ",[aeb_fate_data:format(V) || V <- Args])
+               ArgToType,
+               aefa_engine_state:accumulator(Env)
               ]).
 
 load_file(FileName, Opts) ->
