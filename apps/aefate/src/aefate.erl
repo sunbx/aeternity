@@ -33,6 +33,8 @@
 -define(TIME(__O__, __T__, __F__),
         case proplists:get_value(time, (__O__), false) of
             true ->
+                %% Prerun to make sure all is loaded.
+                (__F__),
                 {__T__, __R__} = timer:tc(fun () -> (__F__) end),
                 __R__;
             false -> __T__ = 0, (__F__)
@@ -140,7 +142,6 @@ load_file(FileName, Opts) ->
                    , trees  => Trees
                    , tx_env => TxEnv
                    },
-            io:format("Code: ~0p~n", [Code]),
 
             case ?TIME(Opts, ExecutionTime, aefa_fate:run(Spec, Env)) of
                 {ok, NewEnv} ->
