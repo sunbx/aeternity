@@ -97,21 +97,23 @@ new_with_backend(RootHash, CacheRootHash) ->
     Cache = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:ns_cache_backend()),
     #ns_tree{mtree = MTree, cache = Cache}.
 
--spec prune(block_height(), tree()) -> tree().
-prune(NextBlockHeight, #ns_tree{} = Tree) ->
-    {Tree1, ExpiredActions} = int_prune(NextBlockHeight - 1, Tree),
-    run_elapsed(ExpiredActions, Tree1, NextBlockHeight).
+-spec prune(block_height(), aec_trees:trees()) -> tree().
+prune(NextBlockHeight, Trees) ->
+    NSTree = aec_trees:ns(Trees),
+    {NSTree1, ExpiredActions} = int_prune(NextBlockHeight - 1, NSTree),
+    run_elapsed(ExpiredActions, NSTree1, NextBlockHeight).
 
-run_elapsed([], Tree, _) ->
-    Tree;
-run_elapsed([{aens_names, Id, Serialized}|Expired], Tree, Height) ->
+run_elapsed([], Trees, _) ->
+    Trees;
+run_elapsed([{aens_names, Id, Serialized}|Expired], Trees, Height) ->
+    Tree = aec_trees:ns(Trees),
     Name = aens_names:deserialize(Id, Serialized),
     {ok, Tree1} = run_elapsed_name(Name, Tree, Height),
-    run_elapsed(Expired, Tree1, Height);
-run_elapsed([{aens_commitments, Id, Serialized}|Expired], Tree, Height) ->
+    run_elapsed(Expired, aec_trees:set_ns(Trees, Tree1), Height);
+run_elapsed([{aens_commitments, Id, Serialized}|Expired], Trees, Height) ->
     Commitment = aens_commitments:deserialize(Id, Serialized),
-    {ok, Tree1} = run_elapsed_commitment(Commitment, Tree),
-    run_elapsed(Expired, Tree1, Height).
+    {ok, Trees} = run_elapsed_commitment(Commitment, Trees, Height),
+    run_elapsed(Expired, Trees, Height).
 
 -spec enter_commitment(commitment(), tree()) -> tree().
 enter_commitment(Commitment, Tree) ->
@@ -264,12 +266,60 @@ run_elapsed_name(Name, NamesTree0, NextBlockHeight) ->
             {ok, aens_state_tree:delete_name(NameHash, NamesTree0)}
     end.
 
-run_elapsed_commitment(Commitment, NamesTree0) ->
+
+run_elapsed_commitment(Commitment, Trees0, Height) ->
     %% INFO: We delete in both cases when name is claimed or not claimed
     %%       when it expires
+    NamesTree0 = aec_trees:ns(Trees0),
     CommitmentHash = aens_commitments:hash(Commitment),
+    {value, Commitment} = lookup_commitment(CommitmentHash, NamesTree0),
+
     NamesTree1 = aens_state_tree:delete_commitment(CommitmentHash, NamesTree0),
-    {ok, NamesTree1}.
+    case aens_commitments:auction(Commitment) of
+        preclaim ->
+            %% XXXNS this is the old path. Deserialization needs to set auction -> preclaim
+            {ok, aec_trees:set_ns(Trees0, NamesTree1)};
+        claim ->
+            NameHash = aens_commitments:name_hash(Commitment),
+            AccountPubkey = aens_commitments:owner_pubkey(Commitment),
+            NameRentTime = aec_governance:name_claim_max_expiration(),
+            case lookup_name(NameHash, NamesTree0) of
+                {value, _} ->
+                    AccountsTree0 = aec_trees:accounts(Trees0),
+                    AccountsTree1 = return_name_fee(AccountsTree0, Commitment),
+                    aec_trees:set_accounts(aec_trees:set_ns(Trees0, NamesTree1), AccountsTree1);
+                none ->
+                    Name = aens_names:new(NameHash, AccountPubkey, Height + NameRentTime),
+                    NamesTree2 = enter_name(Name, NamesTree1),
+                    AccountsTree0 = aec_trees:accounts(Trees0),
+                    AccountsTree1 = run_second_price_auction(AccountsTree0, Commitment),
+                    Trees1 = aec_trees:set_accounts(aec_trees:set_ns(Trees0, NamesTree2), AccountsTree1),
+                    {ok, Trees1}
+            end
+    end.
+
+return_name_fee(AccountsTree0, Commitment) ->
+    ChargedNameFee = aens_commitments:name_fee(Commitment),
+    AccountsTree1 = aec_accounts_trees:lock_coins(-ChargedNameFee, AccountsTree0),
+
+    OwnerPubKey = aens_commitments:owner_pubkey(Commitment),
+    OwnerAccount0 = aec_accounts_tree:get(OwnerPubKey, AccountsTree0),
+    {ok, OwnerAccount1} = aec_accounts:earn(OwnerAccount0, ChargedNameFee),
+    aec_accounts_trees:enter(OwnerAccount1, AccountsTree1).
+
+run_second_price_auction(AccountsTree0, Commitment) ->
+    ChargedNameFee = aens_commitments:name_fee(Commitment),
+    SecondPrice = aens_commitments:second_price(Commitment),
+    OverPayment = ChargedNameFee-SecondPrice,
+
+    %% API of Accounts Trees takes negative fees
+    AccountsTree1 = aec_accounts_trees:lock_coins(-OverPayment, AccountsTree0),
+
+    %% Return the difference of locked coins and second price
+    OwnerPubKey = aens_commitments:owner_pubkey(Commitment),
+    OwnerAccount0 = aec_accounts_tree:get(OwnerPubKey, AccountsTree0),
+    {ok, OwnerAccount1} = aec_accounts:earn(OwnerAccount0, OverPayment),
+    aec_accounts_trees:enter(OwnerAccount1, AccountsTree1).
 
 %%%===================================================================
 %%% TTL Cache

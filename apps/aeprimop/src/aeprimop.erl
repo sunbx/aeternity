@@ -24,7 +24,7 @@
         , ga_attach_tx_instructions/10
         , ga_meta_tx_instructions/7
         , ga_set_meta_tx_res_instructions/3
-        , name_claim_tx_instructions/5
+        , name_claim_tx_instructions/6
         , name_preclaim_tx_instructions/5
         , name_revoke_tx_instructions/4
         , name_transfer_tx_instructions/5
@@ -39,7 +39,7 @@
 %% Direct op API (mainly for FATE).
 -export([ force_inc_account_nonce_op/2
         , lock_amount_op/2
-        , name_claim_op/5
+        , name_claim_op/8
         , name_preclaim_op/3
         , name_revoke_op/3
         , name_transfer_op/4
@@ -240,15 +240,18 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
     ].
 
 -spec name_claim_tx_instructions(pubkey(), binary(), non_neg_integer(),
-                                 fee(), nonce()) -> [op()].
-name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, Nonce) ->
-    PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
-    DeltaTTL = aec_governance:name_claim_max_expiration(),
-    LockedFee = aec_governance:name_claim_locked_fee(),
+                                 fee(), fee(), nonce()) -> [op()].
+name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, NameFee, Nonce) ->
+    NameRentTime = aec_governance:name_claim_max_expiration(),
+    NameLength = size(PlainName),
+    PreclaimDelta = aec_governance:name_claim_preclaim_timout(),
+    BidDelta = aec_governance:name_claim_bid_timeout(NameLength),
+    MinLockedFee = aec_governance:name_claim_locked_fee(NameLength),
+
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
-    , lock_amount_op(AccountPubkey, LockedFee)
-    , name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta)
+    , name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee,
+                    NameRentTime, PreclaimDelta, BidDelta, MinLockedFee)
     ].
 
 -spec name_revoke_tx_instructions(pubkey(), hash(), fee(), nonce()) -> [op()].
@@ -712,25 +715,69 @@ name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
 
 %%%-------------------------------------------------------------------
 
-name_claim_op(AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta
-             ) when ?IS_HASH(AccountPubkey),
+name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
+              PreclaimDelta, BidDelta, MinLockedFee)
+              when ?IS_HASH(AccountPubkey),
                     is_binary(PlainName),
                     ?IS_NON_NEG_INTEGER(NameSalt),
-                    ?IS_NON_NEG_INTEGER(DeltaTTL),
-                    ?IS_NON_NEG_INTEGER(PreclaimDelta) ->
-    {name_claim, {AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}}.
+                    ?IS_NON_NEG_INTEGER(NameFee),
+                    ?IS_NON_NEG_INTEGER(NameRentTime),
+                    ?IS_NON_NEG_INTEGER(PreclaimDelta),
+                    ?IS_NON_NEG_INTEGER(BidDelta),
+                    ?IS_NON_NEG_INTEGER(MinLockedFee) ->
+    {name_claim, {AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
+                  PreclaimDelta, BidDelta, MinLockedFee}}.
 
-name_claim({AccountPubkey, PlainName, NameSalt, DeltaTTL, PreclaimDelta}, S) ->
+name_claim({AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
+            PreclaimDelta, BidDelta, MinLockedFee}, S) ->
     NameAscii = name_to_ascii(PlainName),
+    NameHash = aens_hash:name_hash(NameAscii),
     CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
     {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
+    HaveAuction = BidDelta > 0,
     assert_commitment_owner(Commitment, AccountPubkey),
-    assert_preclaim_delta(Commitment, PreclaimDelta, S1#state.height),
-    NameHash = aens_hash:name_hash(NameAscii),
-    assert_not_name(NameHash, S1),
-    Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + DeltaTTL),
-    S2 = delete_x(commitment, CommitmentHash, S1),
-    put_name(Name, S2).
+    assert_height_delta(Commitment, PreclaimDelta, S1#state.height),
+
+    %%% XXX consider adding special-state name record to prohibit multiple auctions
+
+    case {get_name_auction_state(Commitment), HaveAuction} of
+        {preclaim, false} ->
+            assert_not_name(NameHash, S1),
+            Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + NameRentTime),
+            S2 = delete_x(commitment, CommitmentHash, S1),
+            put_name(Name, S2);
+        {preclaim, true} ->
+            S2 = delete_x(commitment, CommitmentHash, S1),
+            S3 = lock_bid({Commitment, NameFee}, S2),
+            Commitment1 = aens_commitments:update(Commitment, AccountPubkey,
+                                                  BidDelta, S1#state.height, NameFee, NameHash),
+            put_commitment(Commitment1, S3);
+        {claim_attempt, _} ->
+            assert_bid_fee(AccountPubkey, NameFee, MinLockedFee),
+            S2 = unlock_and_lock_bid_fee({Commitment, AccountPubkey, NameFee}, S1),
+            S3 = delete_x(commitment, CommitmentHash, S2),
+            Commitment = aens_commitments:update(CommitmentHash, AccountPubkey,
+                                                 BidDelta, S#state.height, NameFee, NameHash),
+            put_commitment(Commitment, S3)
+    end.
+
+%% XXX can we change it into a higher level _op list?
+unlock_and_lock_bid_fee({Commtiment, AccountPubKey, NameFee}, S) ->
+    PrevBidderId= aens_commitments:second_bidder(Commtiment),
+    PrevBid = aens_commitments:second_price(Commtiment),
+    S1 = lock_bid({AccountPubKey, NameFee}, S),
+    unlock_prev_bid({PrevBidderId, PrevBid}, S1).
+
+lock_bid({AccountPubKey, NameFee}, S) ->
+    {HighestBidder1, S1} = get_account(AccountPubKey, S),
+    assert_account_balance(HighestBidder1, NameFee),
+    S2 = account_spend(HighestBidder1, NameFee, S1),
+    int_lock_amount(NameFee, S2).
+
+unlock_prev_bid({PrevBidderId, PrevBid}, S) ->
+    S1 = int_unlock_amount(PrevBid, S),
+    {PrevBidderAccount, S2} = ensure_account(PrevBidderId, S1),
+    account_earn(PrevBidderAccount, PrevBid, S2).
 
 name_to_ascii(PlainName) ->
     case aens_utils:to_ascii(PlainName) of
@@ -1345,8 +1392,15 @@ int_lock_amount(0, #state{} = S) ->
     S;
 int_lock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
     LockPubkey = aec_governance:locked_coins_holder_account(),
-    {Account, S1} = ensure_account(LockPubkey, S),
-    account_earn(Account, Amount, S1).
+    {LockAccount, S1} = ensure_account(LockPubkey, S),
+    account_earn(LockAccount, Amount, S1).
+
+int_unlock_amount(0, #state{} = S) ->
+    S;
+int_unlock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
+    LockPubKey = aec_governance:locked_coins_holder_account(),
+    LockAccount = ensure_account(LockPubKey, S),
+    account_spend(LockAccount, Amount, S).
 
 int_resolve_name(NameHash, S) ->
     Key = <<"account_pubkey">>,
@@ -1586,10 +1640,26 @@ assert_not_commitment(CommitmentHash, S) ->
         {_, _} -> runtime_error(commitment_already_present)
     end.
 
+-define(PRECLAIM, preclaim).
+-define(CLAIM_ATTEMPT, claim_attempt).
+
 assert_commitment_owner(Commitment, Pubkey) ->
-    case aens_commitments:owner_pubkey(Commitment) =:= Pubkey of
-        true  -> ok;
-        false -> runtime_error(commitment_not_owned)
+    OwnerId = aens_commitments:owner_pubkey(Commitment),
+    AuctionState = aens_commitments:auction(Commitment),
+    %% TODO: consider moving up auction state,
+    %%       to prevent the leak outside commitments module
+    case {AuctionState, OwnerId =:= Pubkey} of
+        {?PRECLAIM, true}  -> ok;
+        {?PRECLAIM, false} -> runtime_error(commitment_not_owned);
+        {?CLAIM_ATTEMPT, true} -> runtime_error(commitment_already_owned);
+        {?CLAIM_ATTEMPT, false} -> ok
+    end.
+
+assert_height_delta(Commitment, {PreclaimDelta, BidDelta}, Height) ->
+    AuctionState = aens_commitments:auction(Commitment),
+    case AuctionState of
+        ?PRECLAIM -> assert_preclaim_delta(Commitment, PreclaimDelta, Height);
+        ?CLAIM_ATTEMPT ->  assert_bid_delta(Commitment, BidDelta, Height)
     end.
 
 assert_preclaim_delta(Commitment, PreclaimDelta, Height) ->
@@ -1597,6 +1667,18 @@ assert_preclaim_delta(Commitment, PreclaimDelta, Height) ->
         true  -> ok;
         false -> runtime_error(commitment_delta_too_small)
     end.
+
+assert_bid_delta(Commitment, BidDelta, Height) ->
+    case aens_commitments:updated(Commitment) + BidDelta >= Height of
+        true  -> ok;
+        false -> runtime_error(too_late_for_bid)
+    end.
+
+assert_bid_fee(AccountPubkey, NameFee, MinLockedFee)
+               when NameFee >= MinLockedFee ->
+    assert_account_balance(AccountPubkey, NameFee);
+assert_bid_fee(_, _, _) ->
+    runtime_error(too_small_bid).
 
 assert_not_name(NameHash, S) ->
     case find_name(NameHash, S) of
@@ -1806,6 +1888,9 @@ assert_channel_withdraw_amount(Channel, Amount) ->
     ChannelAmount = aesc_channels:channel_amount(Channel),
     Reserve = aesc_channels:channel_reserve(Channel),
     assert(ChannelAmount >= 2*Reserve + Amount, not_enough_channel_funds).
+
+get_name_auction_state(Commitment) ->
+    aens_commitments:auction(Commitment).
 
 %%%===================================================================
 %%% Error handling

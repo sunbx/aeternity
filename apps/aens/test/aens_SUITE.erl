@@ -59,7 +59,7 @@ groups() ->
        revoke_negative]}
     ].
 
--define(NAME, <<"詹姆斯詹姆斯.test"/utf8>>).
+-define(NAME, <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx詹姆斯詹姆斯.test"/utf8>>).
 -define(PRE_CLAIM_HEIGHT, 1).
 
 %%%===================================================================
@@ -103,7 +103,7 @@ preclaim_negative(Cfg) ->
     Height = 1,
     Env = aetx_env:tx_env(Height),
 
-    {ok, NameAscii} = aens_utils:to_ascii(<<"詹姆斯詹姆斯.test"/utf8>>),
+    {ok, NameAscii} = aens_utils:to_ascii(?NAME),
     CHash = aens_hash:commitment_hash(NameAscii, 123),
 
     %% Test bad account key

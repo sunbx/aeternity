@@ -45,6 +45,7 @@
           nonce      :: integer(),
           name       :: binary(),
           name_salt  :: integer(),
+          name_fee   :: integer(),
           fee        :: integer(),
           ttl        :: aetx:tx_ttl()
          }).
@@ -62,12 +63,14 @@ new(#{account_id := AccountId,
       nonce      := Nonce,
       name       := Name,
       name_salt  := NameSalt,
+      name_fee   := NameFee,
       fee        := Fee} = Args) ->
     account = aeser_id:specialize_type(AccountId),
     Tx = #ns_claim_tx{account_id = AccountId,
                       nonce      = Nonce,
                       name       = Name,
                       name_salt  = NameSalt,
+                      name_fee   = NameFee,
                       fee        = Fee,
                       ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.
@@ -108,6 +111,7 @@ process(#ns_claim_tx{} = ClaimTx, Trees, Env) ->
           account_pubkey(ClaimTx),
           name(ClaimTx),
           name_salt(ClaimTx),
+          name_fee(ClaimTx),
           fee(ClaimTx),
           nonce(ClaimTx)),
     aeprimop:eval(Instructions, Trees, Env).
@@ -121,6 +125,7 @@ serialize(#ns_claim_tx{account_id = AccountId,
                        nonce      = None,
                        name       = Name,
                        name_salt  = NameSalt,
+                       name_fee = NameFee,
                        fee        = Fee,
                        ttl        = TTL} = Tx) ->
     {version(Tx),
@@ -128,6 +133,7 @@ serialize(#ns_claim_tx{account_id = AccountId,
      , {nonce, None}
      , {name, Name}
      , {name_salt, NameSalt}
+     , {name_fee, NameFee}
      , {fee, Fee}
      , {ttl, TTL}
      ]}.
@@ -138,6 +144,7 @@ deserialize(?NAME_CLAIM_TX_VSN,
             , {nonce, Nonce}
             , {name, Name}
             , {name_salt, NameSalt}
+            , {name_fee, NameFee}
             , {fee, Fee}
             , {ttl, TTL}]) ->
     account = aeser_id:specialize_type(AccountId),
@@ -145,6 +152,7 @@ deserialize(?NAME_CLAIM_TX_VSN,
                  nonce      = Nonce,
                  name       = Name,
                  name_salt  = NameSalt,
+                 name_fee   = NameFee,
                  fee        = Fee,
                  ttl        = TTL}.
 
@@ -153,6 +161,7 @@ serialization_template(?NAME_CLAIM_TX_VSN) ->
     , {nonce, int}
     , {name, binary}
     , {name_salt, int}
+    , {name_fee, int}
     , {fee, int}
     , {ttl, int}
     ].
@@ -186,6 +195,9 @@ name(#ns_claim_tx{name = Name}) ->
 
 name_salt(#ns_claim_tx{name_salt = NameSalt}) ->
     NameSalt.
+
+name_fee(#ns_claim_tx{name_fee = NameFee}) ->
+    NameFee.
 
 %%%===================================================================
 %%% Internal functions
