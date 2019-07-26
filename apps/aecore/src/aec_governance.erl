@@ -202,16 +202,8 @@ primop_base_gas(?PRIM_CALL_ADDR_IS_ORACLE            ) -> 5000.
 name_preclaim_expiration() ->
     300.
 
-name_claim_locked_fee(Length) when Length > 32 ->
-    %% NSXXX: implement function, move to separate module like coinbase
-    3;
-name_claim_locked_fee(Length) when Length > 8 ->
-    3*256;
-name_claim_locked_fee(Length) when Length > 4 ->
-    3*256*256;
-name_claim_locked_fee(_) ->
-    3*256*256*256.
-
+name_claim_locked_fee(Length) ->
+    aec_aens_governance:init_fee_at_length(Length).
 
 name_claim_max_expiration() ->
     50000.

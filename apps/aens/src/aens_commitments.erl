@@ -36,16 +36,16 @@
 -type(auction_state() :: 'preclaim' | 'claim_attempt').
 
 -record(commitment,
-        {id            :: aeser_id:id(),
-         owner_id      :: aeser_id:id(),
-         created       :: aec_blocks:height(),
-         updated       :: aec_blocks:height(),
-         auction       :: auction_state(),
-         name_fee      :: non_neg_integer(),
-         second_bidder :: aeser_id:id(),
-         second_price  :: non_neg_integer(),
-         name_hash     :: hash(),
-         ttl           :: aec_blocks:height()
+        {id                :: aeser_id:id(),
+         owner_id          :: aeser_id:id(),
+         created           :: aec_blocks:height(),
+         updated           :: aec_blocks:height(),
+         auction           :: auction_state(),
+         name_fee          :: non_neg_integer(),
+         second_bidder     :: aeser_id:id(),
+         second_price = 0  :: non_neg_integer(),
+         name_hash         :: hash(),
+         ttl               :: aec_blocks:height()
          }).
 
 -opaque commitment() :: #commitment{}.
