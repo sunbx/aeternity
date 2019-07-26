@@ -214,16 +214,8 @@ name_protection_period() ->
 name_claim_preclaim_timeout() ->
     1.
 
-name_claim_bid_timeout(Length) when Length > 32 ->
-    %% NSXXX: implement function, move to separate module like coinbase
-    0;
-name_claim_bid_timeout(Length) when Length > 8 ->
-    3*24*20;
-name_claim_bid_timeout(Length) when Length > 4 ->
-    7*24*20;
 name_claim_bid_timeout(Length) ->
-    14*24*20.
-
+    aec_aens_governance:bid_timeout_at_length(Length).
 
 -spec name_registrars() -> list(binary()).
 name_registrars() ->

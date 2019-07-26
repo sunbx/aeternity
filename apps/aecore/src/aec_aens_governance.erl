@@ -6,9 +6,11 @@
 -module(aec_aens_governance).
 
 %% API
--export([init_fee_at_length/1]).
+-export([init_fee_at_length/1,
+         bid_timeout_at_length/1]).
 
 -define(MULTIPLIER_14, 100000000000000).
+-define(MULTIPLIER_DAY, 480).
 
 -spec init_fee_at_length(non_neg_integer()) -> non_neg_integer().
 init_fee_at_length(Length) when not is_integer(Length) orelse Length < 1 ->
@@ -47,3 +49,11 @@ init_fee_at_length(4) -> 1346269 * ?MULTIPLIER_14;
 init_fee_at_length(3) -> 2178309 * ?MULTIPLIER_14;
 init_fee_at_length(2) -> 3524578 * ?MULTIPLIER_14;
 init_fee_at_length(1) -> 5702887 * ?MULTIPLIER_14.
+
+
+bid_timeout_at_length(Length) when not is_integer(Length) orelse Length < 1 ->
+    error({bad_height, Length});
+bid_timeout_at_length(Length) when Length > 32 -> 1;
+bid_timeout_at_length(Length) when Length > 8 -> 1 * ?MULTIPLIER_DAY;  %% 480 blocks
+bid_timeout_at_length(Length) when Length > 4 -> 31 * ?MULTIPLIER_DAY; %% 14880 blocks
+bid_timeout_at_length(Length) when Length > 0 -> 62 * ?MULTIPLIER_DAY. %% 29760 blocks
