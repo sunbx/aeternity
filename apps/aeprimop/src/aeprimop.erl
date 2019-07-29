@@ -243,7 +243,9 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
                                  fee(), fee(), nonce()) -> [op()].
 name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, NameFee, Nonce) ->
     NameRentTime = aec_governance:name_claim_max_expiration(),
-    NameLength = size(PlainName),
+    %% Add parsing to establish size if we have multiple registrars in the future
+    [Registrar] = aec_governance:name_registrars(),
+    NameLength = size(PlainName) - size(Registrar),
     PreclaimDelta = aec_governance:name_claim_preclaim_timout(),
     BidDelta = aec_governance:name_claim_bid_timeout(NameLength),
     MinLockedFee = aec_governance:name_claim_locked_fee(NameLength),
@@ -714,6 +716,9 @@ name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
     put_commitment(Commitment, S).
 
 %%%-------------------------------------------------------------------
+
+-define(PRECLAIM, preclaim).
+-define(CLAIM_ATTEMPT, claim_attempt).
 
 name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
               PreclaimDelta, BidDelta, MinLockedFee)
@@ -1641,9 +1646,6 @@ assert_not_commitment(CommitmentHash, S) ->
         none -> ok;
         {_, _} -> runtime_error(commitment_already_present)
     end.
-
--define(PRECLAIM, preclaim).
--define(CLAIM_ATTEMPT, claim_attempt).
 
 assert_commitment_owner(Commitment, Pubkey) ->
     OwnerId = aens_commitments:owner_pubkey(Commitment),
