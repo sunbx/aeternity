@@ -291,9 +291,7 @@ run_elapsed_commitment(Commitment, Trees0, Height) ->
                 none ->
                     Name = aens_names:new(NameHash, AccountPubkey, Height + NameRentTime),
                     NamesTree2 = enter_name(Name, NamesTree1),
-                    AccountsTree0 = aec_trees:accounts(Trees0),
-                    AccountsTree1 = run_second_price_auction(AccountsTree0, Commitment),
-                    Trees1 = aec_trees:set_accounts(aec_trees:set_ns(Trees0, NamesTree2), AccountsTree1),
+                    Trees1 = aec_trees:set_ns(Trees0, NamesTree2),
                     {ok, Trees1}
             end
     end.
@@ -305,20 +303,6 @@ return_name_fee(AccountsTree0, Commitment) ->
     OwnerPubKey = aens_commitments:owner_pubkey(Commitment),
     OwnerAccount0 = aec_accounts_tree:get(OwnerPubKey, AccountsTree0),
     {ok, OwnerAccount1} = aec_accounts:earn(OwnerAccount0, ChargedNameFee),
-    aec_accounts_trees:enter(OwnerAccount1, AccountsTree1).
-
-run_second_price_auction(AccountsTree0, Commitment) ->
-    ChargedNameFee = aens_commitments:name_fee(Commitment),
-    SecondPrice = aens_commitments:second_price(Commitment),
-    OverPayment = ChargedNameFee-SecondPrice,
-
-    %% API of Accounts Trees takes negative fees
-    AccountsTree1 = aec_accounts_trees:lock_coins(-OverPayment, AccountsTree0),
-
-    %% Return the difference of locked coins and second price
-    OwnerPubKey = aens_commitments:owner_pubkey(Commitment),
-    OwnerAccount0 = aec_accounts_tree:get(OwnerPubKey, AccountsTree0),
-    {ok, OwnerAccount1} = aec_accounts:earn(OwnerAccount0, OverPayment),
     aec_accounts_trees:enter(OwnerAccount1, AccountsTree1).
 
 %%%===================================================================
