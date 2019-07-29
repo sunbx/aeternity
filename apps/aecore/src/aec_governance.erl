@@ -12,6 +12,7 @@
          locked_coins_holder_account/0,
          minimum_gas_price/1,
          name_preclaim_expiration/0,
+         name_claim_bid_increment/0,
          name_claim_locked_fee/1,
          name_claim_max_expiration/0,
          name_protection_period/0,
@@ -216,6 +217,9 @@ name_claim_preclaim_timeout() ->
 
 name_claim_bid_timeout(Length) ->
     aec_aens_governance:bid_timeout_at_length(Length).
+
+name_claim_bid_increment() ->
+    5. %% 5%
 
 -spec name_registrars() -> list(binary()).
 name_registrars() ->

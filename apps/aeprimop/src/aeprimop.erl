@@ -741,18 +741,20 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
     %%% XXX consider adding special-state name record to prohibit multiple auctions
 
     case {get_name_auction_state(Commitment), HaveAuction} of
-        {preclaim, false} ->
+        {?PRECLAIM, false} ->
             assert_not_name(NameHash, S1),
             Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + NameRentTime),
             S2 = delete_x(commitment, CommitmentHash, S1),
             put_name(Name, S2);
-        {preclaim, true} ->
+        {?PRECLAIM, true} ->
+            assert_bid_fee(AccountPubkey, NameFee, MinLockedFee),
             S2 = delete_x(commitment, CommitmentHash, S1),
             S3 = lock_bid({Commitment, NameFee}, S2),
             Commitment1 = aens_commitments:update(Commitment, AccountPubkey,
                                                   BidDelta, S1#state.height, NameFee, NameHash),
             put_commitment(Commitment1, S3);
-        {claim_attempt, _} ->
+        {?CLAIM_ATTEMPT, _} ->
+            assert_bid_increment(Commitment, NameFee),
             assert_bid_fee(AccountPubkey, NameFee, MinLockedFee),
             S2 = unlock_and_lock_bid_fee({Commitment, AccountPubkey, NameFee}, S1),
             S3 = delete_x(commitment, CommitmentHash, S2),
@@ -1679,6 +1681,15 @@ assert_bid_fee(AccountPubkey, NameFee, MinLockedFee)
     assert_account_balance(AccountPubkey, NameFee);
 assert_bid_fee(_, _, _) ->
     runtime_error(too_small_bid).
+
+assert_bid_increment(Commitment, NameFee)  ->
+    PrevPrice = aens_commitments:second_price(Commitment),
+    ProgressionGov = aec_governance:name_claim_bid_progression(),
+    ChangeGov = PrevPrice * ProgressionGov div 100,
+    Change = NameFee - PrevPrice,
+    if Change >= ChangeGov -> ok;
+        true -> error(bid_below_progression)
+    end.
 
 assert_not_name(NameHash, S) ->
     case find_name(NameHash, S) of
