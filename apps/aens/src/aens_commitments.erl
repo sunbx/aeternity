@@ -8,7 +8,7 @@
 -module(aens_commitments).
 
 %% API
--export([new/5,
+-export([new/4,
          update/6,
          serialize/1,
          deserialize/2,
@@ -67,14 +67,14 @@
 %%%===================================================================
 
 -spec new(aeser_id:id(), aeser_id:id(), non_neg_integer(), aec_blocks:height(), non_neg_integer()) -> commitment().
-new(Id, OwnerId, DeltaTTL, BlockHeight, NameFee) ->
+new(Id, OwnerId, DeltaTTL, BlockHeight) ->
     commitment = aeser_id:specialize_type(Id),
     account    = aeser_id:specialize_type(OwnerId),
     #commitment{id       = Id,
                 owner_id = OwnerId,
                 created  = BlockHeight,
                 auction  = preclaim,
-                name_fee = NameFee,
+                name_fee = 0,
                 second_price = 0,
                 ttl      = BlockHeight + DeltaTTL}.
 
