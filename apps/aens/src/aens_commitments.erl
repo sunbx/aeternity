@@ -41,10 +41,10 @@
          created           :: aec_blocks:height(),
          updated           :: aec_blocks:height(),
          auction           :: auction_state(),
-         name_fee          :: non_neg_integer(),
-         second_bidder     :: aeser_id:id(),
-         second_price = 0  :: non_neg_integer(),
-         name_hash         :: hash(),
+         name_fee          :: non_neg_integer() | undefined,
+         second_bidder     :: aeser_id:id()     | undefined,
+         second_price      :: non_neg_integer() | undefined,
+         name_hash         :: hash()            | undefined,
          ttl               :: aec_blocks:height()
          }).
 
@@ -60,22 +60,21 @@
               serialized/0]).
 
 -define(COMMITMENT_TYPE, name_commitment).
--define(COMMITMENT_VSN, 1).
+-define(COMMITMENT_PRECLAIM, 1).
+-define(COMMITMENT_CLAIM, 2).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
--spec new(aeser_id:id(), aeser_id:id(), non_neg_integer(), aec_blocks:height(), non_neg_integer()) -> commitment().
+-spec new(aeser_id:id(), aeser_id:id(), non_neg_integer(), aec_blocks:height()) -> commitment().
 new(Id, OwnerId, DeltaTTL, BlockHeight) ->
     commitment = aeser_id:specialize_type(Id),
     account    = aeser_id:specialize_type(OwnerId),
     #commitment{id       = Id,
                 owner_id = OwnerId,
+                auction = preclaim,
                 created  = BlockHeight,
-                auction  = preclaim,
-                name_fee = 0,
-                second_price = 0,
                 ttl      = BlockHeight + DeltaTTL}.
 
 -spec update(commitment(), aeser_id:id(), non_neg_integer(), aec_blocks:height(),
@@ -96,6 +95,18 @@ update(Commitment, OwnerId, BidDelta, BlockHeight, NameFee, NameHash) ->
 
 -spec serialize(commitment()) -> serialized().
 serialize(#commitment{owner_id = OwnerId,
+    created = Created,
+    auction = Auction,
+    ttl = TTL}) ->
+    aeser_chain_objects:serialize(
+        ?COMMITMENT_TYPE,
+        ?COMMITMENT_PRECLAIM,
+        serialization_template(?COMMITMENT_PRECLAIM),
+        [ {owner_id, OwnerId}
+        , {created, Created}
+         , {auction, atom_to_binary(Auction, utf8)}
+        , {ttl, TTL}]);
+serialize(#commitment{owner_id = OwnerId,
                       created = Created,
                       updated = Updated,
                       auction = Auction,
@@ -106,12 +117,12 @@ serialize(#commitment{owner_id = OwnerId,
                       ttl = TTL}) ->
     aeser_chain_objects:serialize(
       ?COMMITMENT_TYPE,
-      ?COMMITMENT_VSN,
-      serialization_template(?COMMITMENT_VSN),
+      ?COMMITMENT_CLAIM,
+      serialization_template(?COMMITMENT_CLAIM),
       [ {owner_id, OwnerId}
       , {created, Created}
       , {updated, Updated}
-      , {auction, Auction}
+      , {auction, atom_to_binary(Auction, utf8)}
       , {name_fee, NameFee}
       , {second_bidder, SecondBidder}
       , {second_price, SecondPrice}
@@ -120,14 +131,21 @@ serialize(#commitment{owner_id = OwnerId,
 
 -spec deserialize(hash(), binary()) -> commitment().
 deserialize(CommitmentHash, Bin) ->
-    Fields = aeser_chain_objects:deserialize(
-                  ?COMMITMENT_TYPE,
-                  ?COMMITMENT_VSN,
-                  serialization_template(?COMMITMENT_VSN),
-                  Bin),
-    deserialize_from_fields(?COMMITMENT_VSN, CommitmentHash, Fields).
+    {Type, Vsn, _Rest} = aeser_chain_objects:deserialize_type_and_vsn(Bin),
+    Fields = aeser_chain_objects:deserialize(Type, Vsn, serialization_template(Vsn), Bin),
+    deserialize_from_fields(Vsn, CommitmentHash, Fields).
 
-deserialize_from_fields(?COMMITMENT_VSN, CommitmentHash,
+deserialize_from_fields(?COMMITMENT_PRECLAIM, CommitmentHash,
+    [ {owner_id, OwnerId}
+        , {created, Created}
+        , {auction, Auction}
+        , {ttl, TTL}]) ->
+    #commitment{id       = aeser_id:create(commitment, CommitmentHash),
+        owner_id = OwnerId,
+        created  = Created,
+        auction = binary_to_existing_atom(Auction, utf8),
+        ttl      = TTL};
+deserialize_from_fields(?COMMITMENT_CLAIM, CommitmentHash,
     [ {owner_id, OwnerId}
     , {created, Created}
     , {updated, Updated}
@@ -141,14 +159,20 @@ deserialize_from_fields(?COMMITMENT_VSN, CommitmentHash,
                 owner_id = OwnerId,
                 created  = Created,
                 updated = Updated,
-                auction = Auction,
+                auction = binary_to_existing_atom(Auction, utf8),
                 name_fee = NameFee,
                 second_bidder = SecondBidder,
                 second_price = SecondPrice,
                 name_hash = NameHash,
                 ttl      = TTL}.
 
-serialization_template(?COMMITMENT_VSN) ->
+serialization_template(?COMMITMENT_PRECLAIM) ->
+    [ {owner_id, id}
+        , {created, int}
+        , {auction, binary}
+        , {ttl, int}
+    ];
+serialization_template(?COMMITMENT_CLAIM) ->
     [ {owner_id, id}
     , {created, int}
     , {updated, int}
@@ -194,8 +218,8 @@ second_price(#commitment{second_price = SecondPrice}) ->
     SecondPrice.
 
 -spec second_bidder(commitment()) -> pubkey().
-second_bidder(#commitment{second_bidder = SecondBidder}) ->
-    SecondBidder.
+second_bidder(#commitment{owner_id = SecondBidder}) ->
+    aeser_id:specialize(SecondBidder, account).
 
 -spec name_hash(commitment()) -> hash().
 name_hash(#commitment{name_hash = NameHash}) ->

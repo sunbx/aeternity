@@ -241,15 +241,14 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
 
 -spec name_claim_tx_instructions(pubkey(), binary(), non_neg_integer(),
                                  fee(), fee(), nonce()) -> [op()].
-name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, Fee, NameFee, Nonce) ->
+name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, NameFee, Fee, Nonce) ->
     NameRentTime = aec_governance:name_claim_max_expiration(),
     %% Add parsing to establish size if we have multiple registrars in the future
     [Registrar] = aec_governance:name_registrars(),
     NameLength = size(PlainName) - size(Registrar),
-    PreclaimDelta = aec_governance:name_claim_preclaim_timout(),
+    PreclaimDelta = aec_governance:name_claim_preclaim_timeout(),
     BidDelta = aec_governance:name_claim_bid_timeout(NameLength),
     MinLockedFee = aec_governance:name_claim_locked_fee(NameLength),
-
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
     , name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee,
@@ -713,6 +712,7 @@ name_preclaim({AccountPubkey, CommitmentHash, DeltaTTL}, S) ->
     Id      = aeser_id:create(commitment, CommitmentHash),
     OwnerId = aeser_id:create(account, AccountPubkey),
     Commitment = aens_commitments:new(Id, OwnerId, DeltaTTL, S#state.height),
+
     put_commitment(Commitment, S).
 
 %%%-------------------------------------------------------------------
@@ -739,29 +739,31 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
     NameHash = aens_hash:name_hash(NameAscii),
     CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
     {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
-    HaveAuction = BidDelta > 0,
+    %% XXX base decision directly on length to make it more readable
+    HaveAuction = BidDelta > 1, %% Have auction only for the longer names which have BidDelta > PreclaimDelta
     assert_commitment_owner(Commitment, AccountPubkey),
-    assert_height_delta(Commitment, PreclaimDelta, S1#state.height),
-
+    assert_height_delta(Commitment, {PreclaimDelta, BidDelta}, S1#state.height),
     %%% XXX consider adding special-state name record to prohibit multiple auctions
+
+    {Account, S2} = get_account(AccountPubkey, S1),
+    assert_bid_fee(Account, NameFee, MinLockedFee),
 
     case {get_name_auction_state(Commitment), HaveAuction} of
         {?PRECLAIM, false} ->
-            assert_not_name(NameHash, S1),
+            assert_not_name(NameHash, S2),
+            S3 = lock_bid({Account, NameFee}, S2),
             Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + NameRentTime),
-            S2 = delete_x(commitment, CommitmentHash, S1),
-            put_name(Name, S2);
+            S4 = delete_x(commitment, CommitmentHash, S3),
+            put_name(Name, S4);
         {?PRECLAIM, true} ->
-            assert_bid_fee(AccountPubkey, NameFee, MinLockedFee),
             S2 = delete_x(commitment, CommitmentHash, S1),
-            S3 = lock_bid({Commitment, NameFee}, S2),
+            S3 = lock_bid({Account, NameFee}, S2),
             Commitment1 = aens_commitments:update(Commitment, AccountPubkey,
                                                   BidDelta, S1#state.height, NameFee, NameHash),
             put_commitment(Commitment1, S3);
         {?CLAIM_ATTEMPT, _} ->
             assert_bid_increment(Commitment, NameFee),
-            assert_bid_fee(AccountPubkey, NameFee, MinLockedFee),
-            S2 = unlock_and_lock_bid_fee({Commitment, AccountPubkey, NameFee}, S1),
+            S2 = unlock_and_lock_bid_fee({Commitment, Account, NameFee}, S1),
             S3 = delete_x(commitment, CommitmentHash, S2),
             Commitment = aens_commitments:update(CommitmentHash, AccountPubkey,
                                                  BidDelta, S#state.height, NameFee, NameHash),
@@ -769,17 +771,15 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
     end.
 
 %% XXX can we change it into a higher level _op list?
-unlock_and_lock_bid_fee({Commtiment, AccountPubKey, NameFee}, S) ->
+unlock_and_lock_bid_fee({Commtiment, Account, NameFee}, S) ->
     PrevBidderId= aens_commitments:second_bidder(Commtiment),
     PrevBid = aens_commitments:second_price(Commtiment),
-    S1 = lock_bid({AccountPubKey, NameFee}, S),
+    S1 = lock_bid({Account, NameFee}, S),
     unlock_prev_bid({PrevBidderId, PrevBid}, S1).
 
-lock_bid({AccountPubKey, NameFee}, S) ->
-    {HighestBidder1, S1} = get_account(AccountPubKey, S),
-    assert_account_balance(HighestBidder1, NameFee),
-    S2 = account_spend(HighestBidder1, NameFee, S1),
-    int_lock_amount(NameFee, S2).
+lock_bid({Account, NameFee}, S) ->
+    S1 = account_spend(Account, NameFee, S),
+    int_lock_amount(NameFee, S1).
 
 unlock_prev_bid({PrevBidderId, PrevBid}, S) ->
     S1 = int_unlock_amount(PrevBid, S),

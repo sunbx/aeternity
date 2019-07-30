@@ -14,6 +14,7 @@
          name_preclaim_expiration/0,
          name_claim_bid_increment/0,
          name_claim_locked_fee/1,
+         name_claim_locked_fee_base/0,
          name_claim_max_expiration/0,
          name_protection_period/0,
          name_claim_preclaim_timeout/0,
@@ -202,6 +203,9 @@ primop_base_gas(?PRIM_CALL_ADDR_IS_ORACLE            ) -> 5000.
 
 name_preclaim_expiration() ->
     300.
+
+name_claim_locked_fee_base() ->
+    aec_aens_governance:get_base_fee().
 
 name_claim_locked_fee(Length) ->
     aec_aens_governance:init_fee_at_length(Length).

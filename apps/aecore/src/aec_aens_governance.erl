@@ -7,16 +7,20 @@
 
 %% API
 -export([init_fee_at_length/1,
-         bid_timeout_at_length/1]).
+         bid_timeout_at_length/1,
+         get_base_fee/0]).
 
 -define(MULTIPLIER_14, 100000000000000).
 -define(MULTIPLIER_DAY, 480).
+-define(BASE_FEE, 3).
+
+get_base_fee() -> ?BASE_FEE * ?MULTIPLIER_14.
 
 -spec init_fee_at_length(non_neg_integer()) -> non_neg_integer().
 init_fee_at_length(Length) when not is_integer(Length) orelse Length < 1 ->
     error({bad_height, Length});
 
-init_fee_at_length(Length) when Length > 31 -> 3 * ?MULTIPLIER_14;
+init_fee_at_length(Length) when Length > 31 -> get_base_fee();
 
 init_fee_at_length(31) -> 3 * ?MULTIPLIER_14;
 init_fee_at_length(30) -> 5 * ?MULTIPLIER_14;

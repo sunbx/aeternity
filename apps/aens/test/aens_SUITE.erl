@@ -59,7 +59,8 @@ groups() ->
        revoke_negative]}
     ].
 
--define(NAME, <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx詹姆斯詹姆斯.test"/utf8>>).
+-define(NAME_1, <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx詹姆斯詹姆斯.test"/utf8>>).
+-define(NAME_1_LEN, 36).
 -define(PRE_CLAIM_HEIGHT, 1).
 
 %%%===================================================================
@@ -75,7 +76,7 @@ preclaim(Cfg) ->
     PrivKey = aens_test_utils:priv_key(PubKey, S1),
     Trees = aens_test_utils:trees(S1),
     Height = ?PRE_CLAIM_HEIGHT,
-    Name = ?NAME,
+    Name = ?NAME_1,
     NameSalt = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name),
     CHash = aens_hash:commitment_hash(NameAscii, NameSalt),
@@ -103,7 +104,7 @@ preclaim_negative(Cfg) ->
     Height = 1,
     Env = aetx_env:tx_env(Height),
 
-    {ok, NameAscii} = aens_utils:to_ascii(?NAME),
+    {ok, NameAscii} = aens_utils:to_ascii(?NAME_1),
     CHash = aens_hash:commitment_hash(NameAscii, 123),
 
     %% Test bad account key
@@ -184,7 +185,7 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     Env      = aetx_env:tx_env(Height),
 
     LockedCoinsHolderPubKey = aec_governance:locked_coins_holder_account(),
-    LockedCoinsFee          = aec_governance:name_claim_locked_fee(),
+    LockedCoinsFee          = aec_governance:name_claim_locked_fee(?NAME_1_LEN),
 
     %% Locked coins holder is not present in state tree
     none = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees)),
@@ -526,8 +527,8 @@ prune_preclaim(Cfg) ->
 
     TTL = aens_commitments:ttl(C),
     GenesisHeight = aec_block_genesis:height(),
-    NSTree = do_prune_until(GenesisHeight, TTL + 1, aec_trees:ns(Trees2)),
-    none = aens_state_tree:lookup_commitment(CHash, NSTree),
+    Trees3 = do_prune_until(GenesisHeight, TTL + 1, Trees2),
+    none = aens_state_tree:lookup_commitment(CHash, aec_trees:ns(Trees3)),
     ok.
 
 prune_claim(Cfg) ->
@@ -544,14 +545,16 @@ prune_claim(Cfg) ->
     TTL1     = aens_names:ttl(N),
 
 
-    NTree2 = aens_state_tree:prune(TTL1+1, NTrees),
+    Trees3 = aens_state_tree:prune(TTL1+1, Trees2),
+    NTree2 = aec_trees:ns(Trees3),
     {value, N2} = aens_state_tree:lookup_name(NHash, NTree2),
     NHash    = aens_names:hash(N2),
     PubKey   = aens_names:owner_pubkey(N2),
     revoked  = aens_names:status(N2),
     TTL2     = aens_names:ttl(N2),
 
-    NTree3 = aens_state_tree:prune(TTL2+1, NTree2),
+    Trees4 = aens_state_tree:prune(TTL2+1, Trees3),
+    NTree3 = aec_trees:ns(Trees4),
     none = aens_state_tree:lookup_name(NHash, NTree3),
 
     {PubKey, NHash, S2}.

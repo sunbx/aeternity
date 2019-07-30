@@ -97,23 +97,21 @@ new_with_backend(RootHash, CacheRootHash) ->
     Cache = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:ns_cache_backend()),
     #ns_tree{mtree = MTree, cache = Cache}.
 
--spec prune(block_height(), aec_trees:trees()) -> tree().
+-spec prune(block_height(), aec_trees:trees()) -> aec_trees:trees().
 prune(NextBlockHeight, Trees) ->
-    NSTree = aec_trees:ns(Trees),
-    {NSTree1, ExpiredActions} = int_prune(NextBlockHeight - 1, NSTree),
-    run_elapsed(ExpiredActions, NSTree1, NextBlockHeight).
+    {NSTree1, ExpiredActions} = int_prune(NextBlockHeight - 1, aec_trees:ns(Trees)),
+    run_elapsed(ExpiredActions, aec_trees:set_ns(Trees, NSTree1), NextBlockHeight).
 
 run_elapsed([], Trees, _) ->
     Trees;
 run_elapsed([{aens_names, Id, Serialized}|Expired], Trees, Height) ->
-    Tree = aec_trees:ns(Trees),
     Name = aens_names:deserialize(Id, Serialized),
-    {ok, Tree1} = run_elapsed_name(Name, Tree, Height),
+    {ok, Tree1} = run_elapsed_name(Name, aec_trees:ns(Trees), Height),
     run_elapsed(Expired, aec_trees:set_ns(Trees, Tree1), Height);
 run_elapsed([{aens_commitments, Id, Serialized}|Expired], Trees, Height) ->
     Commitment = aens_commitments:deserialize(Id, Serialized),
-    {ok, Trees} = run_elapsed_commitment(Commitment, Trees, Height),
-    run_elapsed(Expired, Trees, Height).
+    {ok, Trees1} = run_elapsed_commitment(Commitment, Trees, Height),
+    run_elapsed(Expired, Trees1, Height).
 
 -spec enter_commitment(commitment(), tree()) -> tree().
 enter_commitment(Commitment, Tree) ->
