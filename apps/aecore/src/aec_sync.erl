@@ -731,7 +731,7 @@ do_work_on_sync_task(PeerId, Task, LastResult) ->
             do_work_on_sync_task(PeerId, Task, {post_blocks, Res});
         {get_generation, Height, Hash} ->
             Res =
-                case do_fetch_generation(PeerId, Hash) of
+                case do_fetch_generation(PeerId, Height, Hash) of
                     {ok, local}     -> {get_generation, Height, Hash, PeerId, {ok, local}};
                     {ok, Block}     -> {get_generation, Height, Hash, PeerId, {ok, Block}};
                     {error, Reason} -> {error, {get_generation, Reason}}
