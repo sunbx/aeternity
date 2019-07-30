@@ -830,9 +830,13 @@ fill_pool(PeerId, StartHash, TargetHash, ST) ->
             update_sync_task({done, PeerId}, ST),
             epoch_sync:info("Sync done (according to ~p)", [ppp(PeerId)]),
             aec_events:publish(chain_sync, {chain_sync_done, PeerId});
-        {ok, Hashes = [{FirstHeight, _} | _]} when
+        {ok, Hashes = [{FirstHeight, FirstHash} | _]} when
+              %%
               %% Guaranteed by deserialization.
-              is_integer(FirstHeight), FirstHeight >= 0 ->
+              is_integer(FirstHeight), FirstHeight >= 0,
+              %%
+              %% Expected from peer-to-peer protocol. Here for readability.
+              FirstHash =/= StartHash ->
             case heights_are_consecutive(Hashes) of
                 {ok, _} ->
                     HashPool = [ #pool_item{ height = Height
