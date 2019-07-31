@@ -3472,7 +3472,8 @@ sophia_signatures_aens(Cfg) ->
     Acc             = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     NameAcc         = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct              = ?call(create_contract, NameAcc, aens, {}, #{ amount => 100000 }),
-    Name1           = <<"bla.test">>,
+    LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name1           = <<LongPrefix/binary, "bla.test">>,
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
@@ -3483,7 +3484,7 @@ sophia_signatures_aens(Cfg) ->
                   VMVersion when ?IS_FATE_SOPHIA(VMVersion) -> Name1
               end,
     NameAccSig      = sign(<<NameAcc/binary, Ct/binary>>, NameAcc),
-    {ok, NameHash}  = aens:get_name_hash(<<"bla.test">>),
+    {ok, NameHash}  = aens:get_name_hash(<<LongPrefix/binary, "bla.test">>),
     NameSig         = sign(<<NameAcc/binary, NameHash/binary, Ct/binary>>, NameAcc),
     AccSig          = sign(<<Acc/binary, NameHash/binary, Ct/binary>>, Acc),
     APubkey  = 1,
@@ -4910,7 +4911,8 @@ sophia_aens_resolve(_Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
-    Name     = <<"foo.test">>,
+    LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name     = <<LongPrefix/binary, "foo.test">>,
     APubkey  = 1,
     OPubkey  = 2,
     CPubkey  = 3,
@@ -4962,7 +4964,7 @@ sophia_aens_transactions(Cfg) ->
     %% AENS transactions from contract
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
-    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
+    Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 + aec_governance:name_claim_fee_base() }),
 
     APubkey  = 1,
     OPubkey  = 2,
@@ -4972,7 +4974,8 @@ sophia_aens_transactions(Cfg) ->
                 aens_pointer:new(<<"oracle_pubkey">>, aeser_id:create(oracle, <<OPubkey:256>>)),
                 aens_pointer:new(<<"contract_pubkey">>, aeser_id:create(contract, <<CPubkey:256>>))
                ],
-    Name1           = <<"bla.test">>,
+    LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name1           = <<LongPrefix/binary, "bla.test">>,
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),

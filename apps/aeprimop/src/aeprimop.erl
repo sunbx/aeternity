@@ -248,7 +248,7 @@ name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, NameFee, Fee, Non
     NameLength = size(PlainName) - size(Registrar),
     PreclaimDelta = aec_governance:name_claim_preclaim_timeout(),
     BidDelta = aec_governance:name_claim_bid_timeout(NameLength),
-    MinLockedFee = aec_governance:name_claim_locked_fee(NameLength),
+    MinLockedFee = aec_governance:name_claim_fee(NameLength),
     [ inc_account_nonce_op(AccountPubkey, Nonce)
     , spend_fee_op(AccountPubkey, Fee)
     , name_claim_op(AccountPubkey, PlainName, NameSalt, NameFee,

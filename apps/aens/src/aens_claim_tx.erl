@@ -70,7 +70,7 @@ new(#{account_id := AccountId,
                       name       = Name,
                       name_salt  = NameSalt,
                       name_fee   = maps:get(name_fee, Args,
-                                            aec_governance:name_claim_locked_fee_base()),
+                                            aec_governance:name_claim_fee_base()),
                       fee        = Fee,
                       ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.

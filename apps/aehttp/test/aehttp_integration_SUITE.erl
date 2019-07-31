@@ -2987,7 +2987,8 @@ naming_system_manage_name(_Config) ->
     PubKeyEnc   = aeser_api_encoder:encode(account_pubkey, PubKey),
     %% TODO: find out how to craete HTTP path with unicode chars
     %%Name        = <<"詹姆斯詹姆斯.test"/utf8>>,
-    Name        = <<"without-unicode.test">>,
+    LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name        = <<LongPrefix/binary, "without-unicode.test">>,
     NameSalt    = 12345,
     NameTTL     = 20000,
     Pointers    = [#{<<"key">> => <<"account_pubkey">>, <<"id">> => PubKeyEnc}],
@@ -3034,7 +3035,7 @@ naming_system_manage_name(_Config) ->
 
     %% Check tx fee taken from account, claim fee locked,
     %% then mine reward and fee added to account
-    ClaimLockedFee = rpc(aec_governance, name_claim_locked_fee, []),
+    ClaimLockedFee = rpc(aec_governance, name_claim_fee, [size(Name)]),
     {ok, 200, #{<<"balance">> := Balance2}} = get_accounts_by_pubkey_sut(PubKeyEnc),
     {ok, 200, #{<<"height">> := Height3}} = get_key_blocks_current_sut(),
     ?assertEqual(Balance2, Balance1 - Fee - ClaimLockedFee),
@@ -3118,7 +3119,8 @@ naming_system_manage_name(_Config) ->
     ok.
 
 naming_system_broken_txs(_Config) ->
-    Name        = <<"fooo.test">>,
+    LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name        = <<LongPrefix/binary, "fooo.test">>,
     NameSalt    = 12345,
     {ok, NHash} = aens:get_name_hash(Name),
     CHash       = aens_hash:commitment_hash(Name, NameSalt),

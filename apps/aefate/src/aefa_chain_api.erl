@@ -599,7 +599,7 @@ aens_preclaim(Pubkey, Hash, #state{} = S) when ?IS_ONCHAIN(S) ->
 aens_claim(Pubkey, NameBin, SaltInt, #state{} = S) when ?IS_ONCHAIN(S) ->
     PreclaimDelta = aec_governance:name_claim_preclaim_delta(),
     DeltaTTL = aec_governance:name_claim_max_expiration(),
-    LockedFee = aec_governance:name_claim_locked_fee(),
+    LockedFee = aec_governance:name_claim_fee(),
     Instructions = [ aeprimop:lock_amount_op(Pubkey, LockedFee)
                    , aeprimop:name_claim_op(Pubkey, NameBin, SaltInt,
                                             DeltaTTL, PreclaimDelta)

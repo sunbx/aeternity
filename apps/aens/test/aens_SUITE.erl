@@ -185,7 +185,7 @@ claim_locked_coins_holder_gets_locked_fee(Cfg) ->
     Env      = aetx_env:tx_env(Height),
 
     LockedCoinsHolderPubKey = aec_governance:locked_coins_holder_account(),
-    LockedCoinsFee          = aec_governance:name_claim_locked_fee(?NAME_1_LEN),
+    LockedCoinsFee          = aec_governance:name_claim_fee(?NAME_1_LEN),
 
     %% Locked coins holder is not present in state tree
     none = aec_accounts_trees:lookup(LockedCoinsHolderPubKey, aec_trees:accounts(Trees)),

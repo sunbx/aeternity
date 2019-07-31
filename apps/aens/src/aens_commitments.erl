@@ -60,8 +60,9 @@
               serialized/0]).
 
 -define(COMMITMENT_TYPE, name_commitment).
--define(COMMITMENT_PRECLAIM, 1).
--define(COMMITMENT_CLAIM, 2).
+-define(COMMITMENT_OLD, 1).
+-define(COMMITMENT_PRECLAIM, 2).
+-define(COMMITMENT_CLAIM, 3).
 
 %%%===================================================================
 %%% API
