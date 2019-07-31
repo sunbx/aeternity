@@ -104,7 +104,7 @@ serialize(#commitment{owner_id = OwnerId,
         serialization_template(?COMMITMENT_PRECLAIM),
         [ {owner_id, OwnerId}
         , {created, Created}
-         , {auction, atom_to_binary(Auction, utf8)}
+        , {auction, atom_to_binary(Auction, utf8)}
         , {ttl, TTL}]);
 serialize(#commitment{owner_id = OwnerId,
                       created = Created,
@@ -136,25 +136,25 @@ deserialize(CommitmentHash, Bin) ->
     deserialize_from_fields(Vsn, CommitmentHash, Fields).
 
 deserialize_from_fields(?COMMITMENT_PRECLAIM, CommitmentHash,
-    [ {owner_id, OwnerId}
-        , {created, Created}
-        , {auction, Auction}
-        , {ttl, TTL}]) ->
+                        [ {owner_id, OwnerId}
+                        , {created, Created}
+                        , {auction, Auction}
+                        , {ttl, TTL}]) ->
     #commitment{id       = aeser_id:create(commitment, CommitmentHash),
-        owner_id = OwnerId,
-        created  = Created,
-        auction = binary_to_existing_atom(Auction, utf8),
-        ttl      = TTL};
+                owner_id = OwnerId,
+                created  = Created,
+                auction = binary_to_existing_atom(Auction, utf8),
+                ttl      = TTL};
 deserialize_from_fields(?COMMITMENT_CLAIM, CommitmentHash,
-    [ {owner_id, OwnerId}
-    , {created, Created}
-    , {updated, Updated}
-    , {auction, Auction}
-    , {name_fee, NameFee}
-    , {second_bidder, SecondBidder}
-    , {second_price, SecondPrice}
-    , {name_hash, NameHash}
-    , {ttl, TTL}]) ->
+                        [ {owner_id, OwnerId}
+                        , {created, Created}
+                        , {updated, Updated}
+                        , {auction, Auction}
+                        , {name_fee, NameFee}
+                        , {second_bidder, SecondBidder}
+                        , {second_price, SecondPrice}
+                        , {name_hash, NameHash}
+                        , {ttl, TTL}]) ->
     #commitment{id       = aeser_id:create(commitment, CommitmentHash),
                 owner_id = OwnerId,
                 created  = Created,
@@ -168,9 +168,9 @@ deserialize_from_fields(?COMMITMENT_CLAIM, CommitmentHash,
 
 serialization_template(?COMMITMENT_PRECLAIM) ->
     [ {owner_id, id}
-        , {created, int}
-        , {auction, binary}
-        , {ttl, int}
+    , {created, int}
+    , {auction, binary}
+    , {ttl, int}
     ];
 serialization_template(?COMMITMENT_CLAIM) ->
     [ {owner_id, id}
