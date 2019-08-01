@@ -3500,6 +3500,9 @@ sophia_signatures_aens(Cfg) ->
                    BadPreclaim),
     {} = ?call(call_contract, Acc, Ct, signedPreclaim, {tuple, []}, {NameAcc, CHash, NameAccSig},        #{ height => 10 }),
     NonceAfterPreclaim = aec_accounts:nonce(aect_test_utils:get_account(NameAcc, state())),
+
+
+    %% XXXNS TODO: fix claim api call
     BadClaim = ?call(call_contract, Acc, Ct, signedClaim,    {tuple, []}, {NameAcc, Name1, Salt1, AccSig}, #{ height => 11 }),
     ?assertMatchVM({error, <<"out_of_gas">>},
                    {error,<<"Error in aens_claim: bad_signature">>},

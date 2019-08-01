@@ -245,7 +245,7 @@ name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, NameFee, Fee, Non
     NameRentTime = aec_governance:name_claim_max_expiration(),
     %% Add parsing to establish size if we have multiple registrars in the future
     [Registrar] = aec_governance:name_registrars(),
-    NameLength = size(PlainName) - size(Registrar),
+    NameLength = size(PlainName) - size(hd(aec_governance:name_registrars())),
     PreclaimDelta = aec_governance:name_claim_preclaim_timeout(),
     BidDelta = aec_governance:name_claim_bid_timeout(NameLength),
     MinLockedFee = aec_governance:name_claim_fee(NameLength),

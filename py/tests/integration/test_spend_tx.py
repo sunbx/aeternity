@@ -113,7 +113,10 @@ def test_send_by_name():
     print("Bob balance is " + str(bob_balance0))
     print("Bob address is " + bob_address)
 
-    bob_name = test_settings["name_register"]["name"]
+    # escape auctions with long prefix
+    bob_name_long = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    bob_name = bob_name_long + test_settings["name_register"]["name"]
+
     fee = test_settings["name_register"]["fee"]
     register_name(bob_name, bob_address, ext_api, int_api, bob_private_key,
                   fee)
