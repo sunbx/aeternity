@@ -277,7 +277,7 @@ run_elapsed_commitment(Commitment, Trees0, Height) ->
         preclaim ->
             %% XXXNS this is the old path. Deserialization needs to set auction -> preclaim
             {ok, aec_trees:set_ns(Trees0, NamesTree1)};
-        claim ->
+        claim_attempt ->
             NameHash = aens_commitments:name_hash(Commitment),
             AccountPubkey = aens_commitments:owner_pubkey(Commitment),
             NameRentTime = aec_governance:name_claim_max_expiration(),
