@@ -17,6 +17,8 @@
          serialization_template/1
         ]).
 
+-export([is_auction_done/1]).
+
 %% Getters
 -export([hash/1,
          owner_pubkey/1,
@@ -33,7 +35,10 @@
 %%%===================================================================
 %%% Types
 %%%===================================================================
--type(auction_state() :: 'preclaim' | 'claim_attempt').
+-define(PRECLAIM, preclaim).
+-define(CLAIM_ATTEMPT, claim_attempt).
+
+-type(auction_state() :: ?PRECLAIM | ?CLAIM_ATTEMPT).
 
 -record(commitment,
         {id                :: aeser_id:id(),
@@ -74,7 +79,7 @@ new(Id, OwnerId, DeltaTTL, BlockHeight) ->
     account    = aeser_id:specialize_type(OwnerId),
     #commitment{id       = Id,
                 owner_id = OwnerId,
-                auction = preclaim,
+                auction = ?PRECLAIM,
                 created  = BlockHeight,
                 ttl      = BlockHeight + DeltaTTL}.
 
@@ -87,7 +92,7 @@ update(Commitment, OwnerId, BidDelta, BlockHeight, NameFee, NameHash) ->
     Commitment#commitment{
       owner_id = OwnerId,
       updated  = BlockHeight,
-      auction  = claim,
+      auction  = ?CLAIM_ATTEMPT,
       name_fee = NameFee,
       second_bidder = PrevOwnerId,
       second_price = PrevNameFee,
@@ -230,3 +235,12 @@ name_hash(#commitment{name_hash = NameHash}) ->
 name_fee(#commitment{name_fee = NameFee}) ->
     NameFee.
 
+%%%
+%%% Auction handling
+%%%
+
+-spec is_auction_done(commitment()) -> boolean().
+is_auction_done(#commitment{auction = ?PRECLAIM}) ->
+    false;
+is_auction_done(#commitment{auction = ?CLAIM_ATTEMPT}) ->
+    false.

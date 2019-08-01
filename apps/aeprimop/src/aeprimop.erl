@@ -748,6 +748,8 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
     {Account, S2} = get_account(AccountPubkey, S1),
     assert_bid_fee(Account, NameFee, MinLockedFee),
 
+
+    %%% TODO: create helper function in aec_commitments to remove all PRECLAIM and CLAIM_ATTEMPT macros
     case {get_name_auction_state(Commitment), HaveAuction} of
         {?PRECLAIM, false} ->
             assert_not_name(NameHash, S2),
