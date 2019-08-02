@@ -273,7 +273,7 @@ run_elapsed_commitment(Commitment, Trees0, Height) ->
     {value, Commitment} = lookup_commitment(CommitmentHash, NamesTree0),
 
     NamesTree1 = aens_state_tree:delete_commitment(CommitmentHash, NamesTree0),
-    case aens_commitments:is_auction_done(Commitment) of
+    case aens_commitments:is_auction_done_when_elapsed(Commitment) of
         false ->
             %% XXXNS this is the old path. Deserialization needs to set auction -> preclaim
             {ok, aec_trees:set_ns(Trees0, NamesTree1)};

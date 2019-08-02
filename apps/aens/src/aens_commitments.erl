@@ -17,7 +17,9 @@
          serialization_template/1
         ]).
 
--export([is_auction_done/1]).
+-export([is_auction_done_when_elapsed/1,
+         get_name_auction_state/2,
+         name_length/1]).
 
 %% Getters
 -export([hash/1,
@@ -239,8 +241,27 @@ name_fee(#commitment{name_fee = NameFee}) ->
 %%% Auction handling
 %%%
 
--spec is_auction_done(commitment()) -> boolean().
-is_auction_done(#commitment{auction = ?PRECLAIM}) ->
+-spec is_auction_done_when_elapsed(commitment()) -> boolean().
+is_auction_done_when_elapsed(#commitment{auction = ?PRECLAIM}) ->
     false;
-is_auction_done(#commitment{auction = ?CLAIM_ATTEMPT}) ->
-    false.
+is_auction_done_when_elapsed(#commitment{auction = ?CLAIM_ATTEMPT}) ->
+    true.
+
+-spec get_name_auction_state(commitment(), binary()) ->
+                             no_auction | auction_opening | auction_ongoing.
+get_name_auction_state(#commitment{auction = Auction}, Name) ->
+    Length = name_length(Name),
+    case {Auction, Length} of
+        {?PRECLAIM, false} ->
+            no_auction;
+        {?PRECLAIM, true} ->
+            auction_opening;
+        {?CLAIM_ATTEMPT, _} ->
+            auction_ongoing
+    end.
+
+
+-spec name_length(binary()) -> non_neg_integer().
+name_length(PlainName) ->
+    %% Works only for one namespace; improve when we have more
+    size(PlainName) - size(hd(aec_governance:name_registrars())).

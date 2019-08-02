@@ -244,8 +244,7 @@ name_preclaim_tx_instructions(AccountPubkey, CommitmentHash, DeltaTTL,
 name_claim_tx_instructions(AccountPubkey, PlainName, NameSalt, NameFee, Fee, Nonce) ->
     NameRentTime = aec_governance:name_claim_max_expiration(),
     %% Add parsing to establish size if we have multiple registrars in the future
-    [Registrar] = aec_governance:name_registrars(),
-    NameLength = size(PlainName) - size(hd(aec_governance:name_registrars())),
+    NameLength = aens_commitments:name_length(PlainName),
     PreclaimDelta = aec_governance:name_claim_preclaim_timeout(),
     BidDelta = aec_governance:name_claim_bid_timeout(NameLength),
     MinLockedFee = aec_governance:name_claim_fee(NameLength),
@@ -739,31 +738,29 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
     NameHash = aens_hash:name_hash(NameAscii),
     CommitmentHash = aens_hash:commitment_hash(NameAscii, NameSalt),
     {Commitment, S1} = get_commitment(CommitmentHash, name_not_preclaimed, S),
-    %% XXX base decision directly on length to make it more readable
-    HaveAuction = BidDelta > 1, %% Have auction only for the longer names which have BidDelta > PreclaimDelta
     assert_commitment_owner(Commitment, AccountPubkey),
     assert_height_delta(Commitment, {PreclaimDelta, BidDelta}, S1#state.height),
+
+
     %%% XXX consider adding special-state name record to prohibit multiple auctions
 
     {Account, S2} = get_account(AccountPubkey, S1),
     assert_bid_fee(Account, NameFee, MinLockedFee),
 
-
-    %%% TODO: create helper function in aec_commitments to remove all PRECLAIM and CLAIM_ATTEMPT macros
-    case {get_name_auction_state(Commitment), HaveAuction} of
-        {?PRECLAIM, false} ->
+    case aens_commitments:get_name_auction_state(Commitment, PlainName) of
+        no_auction ->
             assert_not_name(NameHash, S2),
             S3 = lock_bid({Account, NameFee}, S2),
             Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + NameRentTime),
             S4 = delete_x(commitment, CommitmentHash, S3),
             put_name(Name, S4);
-        {?PRECLAIM, true} ->
+        auction_opening ->
             S2 = delete_x(commitment, CommitmentHash, S1),
             S3 = lock_bid({Account, NameFee}, S2),
             Commitment1 = aens_commitments:update(Commitment, AccountPubkey,
                                                   BidDelta, S1#state.height, NameFee, NameHash),
             put_commitment(Commitment1, S3);
-        {?CLAIM_ATTEMPT, _} ->
+        auction_ongoing ->
             assert_bid_increment(Commitment, NameFee),
             S2 = unlock_and_lock_bid_fee({Commitment, Account, NameFee}, S1),
             S3 = delete_x(commitment, CommitmentHash, S2),
@@ -1903,9 +1900,6 @@ assert_channel_withdraw_amount(Channel, Amount) ->
     ChannelAmount = aesc_channels:channel_amount(Channel),
     Reserve = aesc_channels:channel_reserve(Channel),
     assert(ChannelAmount >= 2*Reserve + Amount, not_enough_channel_funds).
-
-get_name_auction_state(Commitment) ->
-    aens_commitments:auction(Commitment).
 
 %%%===================================================================
 %%% Error handling
