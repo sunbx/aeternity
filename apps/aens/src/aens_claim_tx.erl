@@ -62,6 +62,7 @@
 new(#{account_id := AccountId,
       nonce      := Nonce,
       name       := Name,
+      name_fee   := NameFee,
       name_salt  := NameSalt,
       fee        := Fee} = Args) ->
     account = aeser_id:specialize_type(AccountId),
@@ -69,8 +70,7 @@ new(#{account_id := AccountId,
                       nonce      = Nonce,
                       name       = Name,
                       name_salt  = NameSalt,
-                      name_fee   = maps:get(name_fee, Args,
-                                            aec_governance:name_claim_fee_base()),
+                      name_fee   = NameFee,
                       fee        = Fee,
                       ttl        = maps:get(ttl, Args, 0)},
     {ok, aetx:new(?MODULE, Tx)}.

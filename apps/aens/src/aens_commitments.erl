@@ -48,9 +48,9 @@
          created           :: aec_blocks:height(),
          updated           :: aec_blocks:height(),
          auction           :: auction_state(),
-         name_fee          :: non_neg_integer() | undefined,
-         second_bidder     :: aeser_id:id()     | undefined,
-         second_price      :: non_neg_integer() | undefined,
+         name_fee          :: non_neg_integer(),
+         second_bidder     :: aeser_id:id(),
+         second_price      :: non_neg_integer(),
          name_hash         :: hash()            | undefined,
          ttl               :: aec_blocks:height()
          }).
@@ -83,16 +83,18 @@ new(Id, OwnerId, DeltaTTL, BlockHeight) ->
                 owner_id = OwnerId,
                 auction = ?PRECLAIM,
                 created  = BlockHeight,
+                name_fee = 0,
+                second_price = 0,
                 ttl      = BlockHeight + DeltaTTL}.
 
 -spec update(commitment(), aeser_id:id(), non_neg_integer(), aec_blocks:height(),
              non_neg_integer(), hash()) -> commitment().
-update(Commitment, OwnerId, BidDelta, BlockHeight, NameFee, NameHash) ->
-    account    = aeser_id:specialize_type(OwnerId),
+update(Commitment, NewOwnerId, BidDelta, BlockHeight, NameFee, NameHash) ->
     PrevNameFee = Commitment#commitment.name_fee,
     PrevOwnerId = Commitment#commitment.owner_id,
+    NewOwnerIdSpec = aeser_id:create(account, NewOwnerId),
     Commitment#commitment{
-      owner_id = OwnerId,
+      owner_id = NewOwnerIdSpec,
       updated  = BlockHeight,
       auction  = ?CLAIM_ATTEMPT,
       name_fee = NameFee,
@@ -104,7 +106,9 @@ update(Commitment, OwnerId, BidDelta, BlockHeight, NameFee, NameHash) ->
 -spec serialize(commitment()) -> serialized().
 serialize(#commitment{owner_id = OwnerId,
     created = Created,
-    auction = Auction,
+    auction = preclaim,
+    name_fee = 0,
+    second_price = 0,
     ttl = TTL}) ->
     aeser_chain_objects:serialize(
         ?COMMITMENT_TYPE,
@@ -112,12 +116,14 @@ serialize(#commitment{owner_id = OwnerId,
         serialization_template(?COMMITMENT_PRECLAIM),
         [ {owner_id, OwnerId}
         , {created, Created}
-        , {auction, atom_to_binary(Auction, utf8)}
+        , {auction, <<"preclaim">>}
+        , {name_fee, 0}
+        , {second_price, 0}
         , {ttl, TTL}]);
 serialize(#commitment{owner_id = OwnerId,
                       created = Created,
                       updated = Updated,
-                      auction = Auction,
+                      auction = claim_attempt,
                       name_fee = NameFee,
                       second_bidder = SecondBidder,
                       second_price = SecondPrice,
@@ -130,7 +136,7 @@ serialize(#commitment{owner_id = OwnerId,
       [ {owner_id, OwnerId}
       , {created, Created}
       , {updated, Updated}
-      , {auction, atom_to_binary(Auction, utf8)}
+      , {auction, <<"claim_attempt">>}
       , {name_fee, NameFee}
       , {second_bidder, SecondBidder}
       , {second_price, SecondPrice}
@@ -146,12 +152,16 @@ deserialize(CommitmentHash, Bin) ->
 deserialize_from_fields(?COMMITMENT_PRECLAIM, CommitmentHash,
                         [ {owner_id, OwnerId}
                         , {created, Created}
-                        , {auction, Auction}
+                        , {auction, <<"preclaim">>}
+                        , {name_fee, 0}
+                        , {second_price, 0}
                         , {ttl, TTL}]) ->
     #commitment{id       = aeser_id:create(commitment, CommitmentHash),
                 owner_id = OwnerId,
                 created  = Created,
-                auction = binary_to_existing_atom(Auction, utf8),
+                name_fee = 0,
+                second_price = 0,
+                auction = ?PRECLAIM,
                 ttl      = TTL};
 deserialize_from_fields(?COMMITMENT_CLAIM, CommitmentHash,
                         [ {owner_id, OwnerId}
@@ -178,6 +188,8 @@ serialization_template(?COMMITMENT_PRECLAIM) ->
     [ {owner_id, id}
     , {created, int}
     , {auction, binary}
+    , {name_fee, int}
+    , {second_price, int}
     , {ttl, int}
     ];
 serialization_template(?COMMITMENT_CLAIM) ->
@@ -226,7 +238,7 @@ second_price(#commitment{second_price = SecondPrice}) ->
     SecondPrice.
 
 -spec second_bidder(commitment()) -> pubkey().
-second_bidder(#commitment{owner_id = SecondBidder}) ->
+second_bidder(#commitment{second_bidder = SecondBidder}) ->
     aeser_id:specialize(SecondBidder, account).
 
 -spec name_hash(commitment()) -> hash().
@@ -248,14 +260,16 @@ is_auction_done_when_elapsed(#commitment{auction = ?CLAIM_ATTEMPT}) ->
     true.
 
 -spec get_name_auction_state(commitment(), binary()) ->
-                             no_auction | auction_opening | auction_ongoing.
+                             no_auction | auction_ready | auction_ongoing.
 get_name_auction_state(#commitment{auction = Auction}, Name) ->
     Length = name_length(Name),
-    case {Auction, Length} of
+    %% If the time for the next bid is higher than 1 block, then we have an auction
+    BidTimeout = aec_governance:name_claim_bid_timeout(Length),
+    case {Auction, BidTimeout > 1} of
         {?PRECLAIM, false} ->
             no_auction;
         {?PRECLAIM, true} ->
-            auction_opening;
+            auction_ready;
         {?CLAIM_ATTEMPT, _} ->
             auction_ongoing
     end.
@@ -264,4 +278,5 @@ get_name_auction_state(#commitment{auction = Auction}, Name) ->
 -spec name_length(binary()) -> non_neg_integer().
 name_length(PlainName) ->
     %% Works only for one namespace; improve when we have more
-    size(PlainName) - size(hd(aec_governance:name_registrars())).
+    %% No reason to regex now
+    size(PlainName) - size(hd(aec_governance:name_registrars())) - 1.

@@ -741,7 +741,6 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
     assert_commitment_owner(Commitment, AccountPubkey),
     assert_height_delta(Commitment, {PreclaimDelta, BidDelta}, S1#state.height),
 
-
     %%% XXX consider adding special-state name record to prohibit multiple auctions
 
     {Account, S2} = get_account(AccountPubkey, S1),
@@ -754,25 +753,25 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
             Name = aens_names:new(NameHash, AccountPubkey, S1#state.height + NameRentTime),
             S4 = delete_x(commitment, CommitmentHash, S3),
             put_name(Name, S4);
-        auction_opening ->
-            S2 = delete_x(commitment, CommitmentHash, S1),
-            S3 = lock_bid({Account, NameFee}, S2),
+        auction_ready ->
+            S3 = delete_x(commitment, CommitmentHash, S2),
+            S4 = lock_bid({Account, NameFee}, S3),
             Commitment1 = aens_commitments:update(Commitment, AccountPubkey,
-                                                  BidDelta, S1#state.height, NameFee, NameHash),
-            put_commitment(Commitment1, S3);
+                                                  BidDelta, S4#state.height, NameFee, NameHash),
+            put_commitment(Commitment1, S4);
         auction_ongoing ->
             assert_bid_increment(Commitment, NameFee),
-            S2 = unlock_and_lock_bid_fee({Commitment, Account, NameFee}, S1),
-            S3 = delete_x(commitment, CommitmentHash, S2),
-            Commitment = aens_commitments:update(CommitmentHash, AccountPubkey,
-                                                 BidDelta, S#state.height, NameFee, NameHash),
-            put_commitment(Commitment, S3)
+            S3 = unlock_and_lock_bid_fee({Commitment, Account, NameFee}, S2),
+            S4 = delete_x(commitment, CommitmentHash, S3),
+            Commitment1 = aens_commitments:update(Commitment, AccountPubkey,
+                                                 BidDelta, S4#state.height, NameFee, NameHash),
+            put_commitment(Commitment1, S4)
     end.
 
 %% XXX can we change it into a higher level _op list?
-unlock_and_lock_bid_fee({Commtiment, Account, NameFee}, S) ->
-    PrevBidderId= aens_commitments:second_bidder(Commtiment),
-    PrevBid = aens_commitments:second_price(Commtiment),
+unlock_and_lock_bid_fee({Commitment, Account, NameFee}, S) ->
+    PrevBidderId= aens_commitments:second_bidder(Commitment),
+    PrevBid = aens_commitments:second_price(Commitment),
     S1 = lock_bid({Account, NameFee}, S),
     unlock_prev_bid({PrevBidderId, PrevBid}, S1).
 
@@ -1405,8 +1404,8 @@ int_unlock_amount(0, #state{} = S) ->
     S;
 int_unlock_amount(Amount, S) when ?IS_NON_NEG_INTEGER(Amount) ->
     LockPubKey = aec_governance:locked_coins_holder_account(),
-    LockAccount = ensure_account(LockPubKey, S),
-    account_spend(LockAccount, Amount, S).
+    {LockAccount, S1} = ensure_account(LockPubKey, S),
+    account_spend(LockAccount, Amount, S1).
 
 int_resolve_name(NameHash, S) ->
     Key = <<"account_pubkey">>,
@@ -1685,7 +1684,7 @@ assert_bid_fee(_, _, _) ->
 
 assert_bid_increment(Commitment, NameFee)  ->
     PrevPrice = aens_commitments:second_price(Commitment),
-    ProgressionGov = aec_governance:name_claim_bid_progression(),
+    ProgressionGov = aec_governance:name_claim_bid_increment(),
     ChangeGov = PrevPrice * ProgressionGov div 100,
     Change = NameFee - PrevPrice,
     if Change >= ChangeGov -> ok;
