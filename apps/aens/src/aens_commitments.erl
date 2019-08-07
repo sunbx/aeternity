@@ -67,7 +67,8 @@
               serialized/0]).
 
 -define(COMMITMENT_TYPE, name_commitment).
--define(COMMITMENT_OLD, 1).
+-define(COMMITMENT_OLD, 1). %% TODO: holding up work on backward compatibility
+                            %% as we are supposed to delete test namespace
 -define(COMMITMENT_PRECLAIM, 2).
 -define(COMMITMENT_CLAIM, 3).
 
