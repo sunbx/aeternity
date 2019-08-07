@@ -745,7 +745,6 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
 
     {Account, S2} = get_account(AccountPubkey, S1),
     assert_bid_fee(Account, NameFee, MinLockedFee),
-
     case aens_commitments:get_name_auction_state(Commitment, PlainName) of
         no_auction ->
             assert_not_name(NameHash, S2),
@@ -1683,12 +1682,12 @@ assert_bid_fee(_, _, _) ->
     runtime_error(too_small_bid).
 
 assert_bid_increment(Commitment, NameFee)  ->
-    PrevPrice = aens_commitments:second_price(Commitment),
+    PrevPrice = aens_commitments:name_fee(Commitment),
     ProgressionGov = aec_governance:name_claim_bid_increment(),
     ChangeGov = PrevPrice * ProgressionGov div 100,
     Change = NameFee - PrevPrice,
     if Change >= ChangeGov -> ok;
-        true -> error(bid_below_progression)
+        true -> runtime_error(bid_below_progression)
     end.
 
 assert_not_name(NameHash, S) ->

@@ -67,7 +67,7 @@ insert_key_pair(Pub, Priv, S) ->
 -define(PRIV_SIZE, 32).
 
 setup_new_account(State) ->
-    setup_new_account(1000000 %* 1000000 * 1000000 * 1000000
+    setup_new_account(1000000
                       * aec_test_utils:min_gas_price(), State).
 
 set_account_balance(PubKey, NewBalance, State) ->
