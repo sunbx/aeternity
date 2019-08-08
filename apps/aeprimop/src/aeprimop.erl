@@ -1678,7 +1678,7 @@ assert_bid_delta(Commitment, BidDelta, Height) ->
 assert_bid_fee(AccountPubkey, NameFee, MinLockedFee)
                when NameFee >= MinLockedFee ->
     assert_account_balance(AccountPubkey, NameFee);
-assert_bid_fee(_, _, _) ->
+assert_bid_fee(_, X, Y) ->
     runtime_error(too_small_bid).
 
 assert_bid_increment(Commitment, NameFee)  ->

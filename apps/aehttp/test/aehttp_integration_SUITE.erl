@@ -2262,7 +2262,8 @@ test_missing_address(Key, Encoded, APIFun) ->
     ok.
 
 nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
-    Name = <<"name.test">>,
+    LongPrefix = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
+    Name = <<LongPrefix/binary, "name.test">>,
     Salt = 1234,
 
     {ok, 200, #{<<"commitment_id">> := EncodedCHash}} = get_commitment_id(Name, Salt),
@@ -2284,6 +2285,7 @@ nameservice_transaction_claim(MinerAddress, MinerPubkey) ->
     Encoded = #{account_id => MinerAddress,
                 name => aeser_api_encoder:encode(name, Name),
                 name_salt => Salt,
+                name_fee => aec_governance:name_claim_fee_base(),
                 fee => 100000 * aec_test_utils:min_gas_price()},
     Decoded = maps:merge(Encoded,
                         #{account_id => aeser_id:create(account, MinerPubkey),
@@ -3025,6 +3027,7 @@ naming_system_manage_name(_Config) ->
     ClaimData = #{account_id => PubKeyEnc,
                   name       => aeser_api_encoder:encode(name, Name),
                   name_salt  => NameSalt,
+                  name_fee   => aec_governance:name_claim_fee_base(),
                   fee        => Fee},
     {ok, 200, #{<<"tx">> := ClaimTxEnc}} = get_name_claim(ClaimData),
     ClaimTxHash = sign_and_post_tx(ClaimTxEnc, PrivKey),
@@ -3143,6 +3146,7 @@ naming_system_broken_txs(_Config) ->
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
         get_name_claim(#{name => aeser_api_encoder:encode(name, Name),
                          name_salt => NameSalt,
+                         name_fee => aec_governance:name_claim_fee_base(),
                          account_id => aeser_api_encoder:encode(account_pubkey, random_hash()),
                          fee => Fee}),
     {ok, 404, #{<<"reason">> := <<"Account of account_id not found">>}} =
