@@ -769,8 +769,8 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, NameRentTime,
 
 %% XXX can we change it into a higher level _op list?
 unlock_and_lock_bid_fee({Commitment, Account, NameFee}, S) ->
-    PrevBidderId= aens_commitments:second_bidder(Commitment),
-    PrevBid = aens_commitments:second_price(Commitment),
+    PrevBidderId= aens_commitments:owner_pubkey(Commitment),
+    PrevBid = aens_commitments:name_fee(Commitment),
     S1 = lock_bid({Account, NameFee}, S),
     unlock_prev_bid({PrevBidderId, PrevBid}, S1).
 
