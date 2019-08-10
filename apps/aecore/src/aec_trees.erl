@@ -581,7 +581,7 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
                     lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     {error, Reason};
                 {error, Reason} when not Strict ->
-                    io:format("YYY Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+                    lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     Invalid1 = [SignedTx | InvalidTxs],
                     apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
             catch
@@ -591,7 +591,7 @@ apply_txs_on_state_trees([SignedTx | Rest], ValidTxs, InvalidTxs, Trees, Env, Op
                     {error, Reason};
                 Type:What when not Strict ->
                     Reason = {Type, What},
-                    io:format("YYY Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
+                    lager:debug("Tx ~p cannot be applied due to an error ~p", [Tx, Reason]),
                     Invalid1 = [SignedTx| InvalidTxs],
                     apply_txs_on_state_trees(Rest, ValidTxs, Invalid1, Trees, Env, Opts)
             end;
