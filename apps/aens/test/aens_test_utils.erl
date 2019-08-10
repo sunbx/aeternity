@@ -14,12 +14,15 @@
          priv_key/2,
          setup_new_account/1,
          set_account_balance/3,
+         get_balance/2,
+         locked_coins_balance/1,
          revoke_name/2,
          preclaim_tx_spec/3,
          preclaim_tx_spec/4,
          claim_tx_spec/4,
          claim_tx_spec/5,
          claim_tx_spec/6,
+         claim_tx_defaul_fee/0,
          update_tx_spec/3,
          update_tx_spec/4,
          transfer_tx_spec/4,
@@ -84,6 +87,14 @@ get_account(PubKey, State) ->
         none             -> aec_accounts:new(PubKey, 0);
         {value, Account} -> Account
     end.
+
+get_balance(PubKey, State) ->
+    aec_accounts:balance(get_account(PubKey, State)).
+
+
+locked_coins_balance(State) ->
+    LockAccount = aec_governance:locked_coins_holder_account(),
+    get_balance(LockAccount, State).
 
 setup_new_account(Balance, State) ->
     {PubKey, PrivKey} = new_key_pair(),
@@ -152,7 +163,10 @@ claim_tx_spec(PubKey, Name, NameFee, NameSalt, Spec0, State) ->
 
 claim_tx_default_spec(PubKey, State) ->
     #{nonce => try next_nonce(PubKey, State) catch _:_ -> 0 end,
-      fee   => 50000 * aec_test_utils:min_gas_price()}.
+      fee   => claim_tx_defaul_fee()}.
+
+claim_tx_defaul_fee() ->
+    50000 * aec_test_utils:min_gas_price().
 
 %%%===================================================================
 %%% Update tx

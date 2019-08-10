@@ -3009,8 +3009,8 @@ naming_system_auction(_Config) ->
 
     %% Submit name preclaim tx and check it is in mempool
     PreclaimData = #{commitment_id => EncodedCHash,
-    fee           => Fee,
-    account_id    => PubKey1Enc},
+                     fee           => Fee,
+                     account_id    => PubKey1Enc},
     {ok, 200, #{<<"tx">> := PreclaimTxEnc}} = get_name_preclaim(PreclaimData),
     PreclaimTxHash = sign_and_post_tx(PreclaimTxEnc, PrivKey1),
     {ok, 200, #{<<"tx">> := PreclaimTx}} = get_transactions_by_hash_sut(PreclaimTxHash),
@@ -3031,10 +3031,10 @@ naming_system_auction(_Config) ->
 
     %% Submit name claim tx and check it is in mempool
     ClaimData1 = #{account_id => PubKey1Enc,
-    name       => aeser_api_encoder:encode(name, Name),
-    name_salt  => NameSalt,
-    name_fee   => FirstNameFee,
-    fee        => Fee},
+                   name       => aeser_api_encoder:encode(name, Name),
+                   name_salt  => NameSalt,
+                   name_fee   => FirstNameFee,
+                   fee        => Fee},
     {ok, 200, #{<<"tx">> := ClaimTxEnc1}} = get_name_claim(ClaimData1),
     ClaimTxHash1 = sign_and_post_tx(ClaimTxEnc1, PrivKey1),
 
@@ -3058,14 +3058,14 @@ naming_system_auction(_Config) ->
 
     %% Figure out minimal couter bid price
     NextMinPrice = FirstNameFee + FirstNameFee *
-    aec_governance:name_claim_bid_increment() div 100,
+        aec_governance:name_claim_bid_increment() div 100,
 
     %% Submit couter bid with name claim tx and check it is in mempool
     ClaimData2 = #{account_id => PubKey2Enc,
-    name       => aeser_api_encoder:encode(name, Name),
-    name_salt  => NameSalt,
-    name_fee   => NextMinPrice,
-    fee        => Fee},
+                   name       => aeser_api_encoder:encode(name, Name),
+                   name_salt  => NameSalt,
+                   name_fee   => NextMinPrice,
+                   fee        => Fee},
     {ok, 200, #{<<"tx">> := ClaimTxEnc2}} = get_name_claim(ClaimData2),
     ClaimTxHash2 = sign_and_post_tx(ClaimTxEnc2, PrivKey2),
 

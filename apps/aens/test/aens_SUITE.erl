@@ -314,6 +314,10 @@ claim_with_auction(Cfg) ->
     Bid1 = aec_test_utils:sign_tx(Tx, PrivKey),
     Env      = aetx_env:tx_env(Height),
     S2 = aens_test_utils:set_account_balance(PubKey1, MinFeeForLength*10, S1),
+    Account1Bal1 = aens_test_utils:get_balance(PubKey1, S2),
+
+    LockedAmount1 = aens_test_utils:locked_coins_balance(S2),
+    ?assertEqual(0, LockedAmount1),
 
     Trees2 = aens_test_utils:trees(S2),
     {ok, [Bid1], Trees3, _} =
@@ -326,11 +330,20 @@ claim_with_auction(Cfg) ->
     auction_ongoing = aens_commitments:get_name_auction_state(C1, Name),
     none = aens_state_tree:lookup_name(NHash, NTrees1),
 
+    Account1Bal2 = aens_test_utils:get_balance(PubKey1, S3),
+    LockedAmount2 = aens_test_utils:locked_coins_balance(S3),
+
+    TxFee = aens_test_utils:claim_tx_defaul_fee(),
+    ?assertEqual(Account1Bal1-MinFeeForLength-TxFee, Account1Bal2),
+    ?assertEqual(MinFeeForLength, LockedAmount2), %% INFO: No TxFee handling here
+
     %% ========================================================================
     %% Proceed with 2nd Bid
     {PubKey2, S4} = aens_test_utils:setup_new_account(S3),
     PrivKey2 = aens_test_utils:priv_key(PubKey2, S4),
     S5 = aens_test_utils:set_account_balance(PubKey2, MinFeeForLength*10, S4),
+
+    Account2Bal1 = aens_test_utils:get_balance(PubKey2, S5),
 
     %% Price progression (maybe hardcode values?)
     ProgressionGov = aec_governance:name_claim_bid_increment(),
@@ -346,6 +359,14 @@ claim_with_auction(Cfg) ->
         aec_block_micro_candidate:apply_block_txs([Bid2], Trees4, Env2),
     S6 = aens_test_utils:set_trees(Trees5, S5),
 
+    Account1Bal3 = aens_test_utils:get_balance(PubKey1, S6),
+    Account2Bal2 = aens_test_utils:get_balance(PubKey2, S6),
+    LockedAmount3 = aens_test_utils:locked_coins_balance(S6),
+
+    ?assertEqual(Account1Bal3, Account1Bal2+MinFeeForLength),
+    ?assertEqual(Account2Bal1-MinNextBid1-TxFee, Account2Bal2),
+    ?assertEqual(LockedAmount2-MinFeeForLength+MinNextBid1, LockedAmount3),
+
     %% Post bid checks
     NTrees2 = aec_trees:ns(Trees5),
     {value, C2}       = aens_state_tree:lookup_commitment(CHash, NTrees2),
@@ -360,7 +381,10 @@ claim_with_auction(Cfg) ->
     PrivKey3 = aens_test_utils:priv_key(PubKey3, S7),
     S8 = aens_test_utils:set_account_balance(PubKey3, MinFeeForLength*10, S7),
 
-    TxSpec2 = aens_test_utils:claim_tx_spec(PubKey3, Name, MinNextBid1*2, NameSalt, S8),
+    Account3Bal1 = aens_test_utils:get_balance(PubKey3, S8),
+
+    ThirdBid = MinNextBid1*2,
+    TxSpec2 = aens_test_utils:claim_tx_spec(PubKey3, Name, ThirdBid, NameSalt, S8),
     {ok, Tx2} = aens_claim_tx:new(TxSpec2),
     Bid3 = aec_test_utils:sign_tx(Tx2, PrivKey3),
     Env3      = aetx_env:tx_env(Height+960),  %% two days bid delta
@@ -368,6 +392,14 @@ claim_with_auction(Cfg) ->
     {ok, [Bid3], Trees7, _} =
         aec_block_micro_candidate:apply_block_txs([Bid3], Trees6, Env3),
     S9 = aens_test_utils:set_trees(Trees7, S8),
+
+    Account3Bal2 = aens_test_utils:get_balance(PubKey3, S9),
+    Account2Bal3 = aens_test_utils:get_balance(PubKey2, S9),
+    LockedAmount4 = aens_test_utils:locked_coins_balance(S9),
+
+    ?assertEqual(Account3Bal1-ThirdBid-TxFee, Account3Bal2),
+    ?assertEqual(Account2Bal3, Account2Bal2+MinNextBid1),
+    ?assertEqual(LockedAmount3-MinNextBid1+ThirdBid, LockedAmount4),
 
     %% Post bid checks
     NTrees3 = aec_trees:ns(Trees7),
@@ -398,6 +430,15 @@ claim_with_auction(Cfg) ->
     NameRentTime = aec_governance:name_claim_max_expiration(),
     Trees9 = do_prune_until(GenesisHeight, BidExpiration + NameRentTime + 1, Trees8),
     none = aens_state_tree:lookup_name(NHash, aec_trees:ns(Trees9)),
+    S11 = aens_test_utils:set_trees(Trees9, S10),
+
+    %% Nothing should change from the last interaction
+    Account1Final = aens_test_utils:get_balance(PubKey1, S11),
+    Account2Final = aens_test_utils:get_balance(PubKey2, S11),
+    Account3Final = aens_test_utils:get_balance(PubKey3, S11),
+    ?assertEqual(Account1Bal3, Account1Final),
+    ?assertEqual(Account2Bal3, Account2Final),
+    ?assertEqual(Account3Bal2, Account3Final),
 
     {PubKey3, NHash, S10}.
 
