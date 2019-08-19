@@ -90,12 +90,12 @@ new(Id, OwnerId, DeltaTTL, BlockHeight) ->
                 name_fee = 0,
                 ttl      = BlockHeight + DeltaTTL}.
 
--spec update(commitment(), aeser_id:id(), non_neg_integer(), aec_blocks:height(),
+-spec update(commitment(), pubkey(), non_neg_integer(), aec_blocks:height(),
              non_neg_integer(), hash()) -> commitment().
-update(Commitment, NewOwnerId, BidDelta, BlockHeight, NameFee, NameHash) ->
-    NewOwnerIdSpec = aeser_id:create(account, NewOwnerId),
+update(Commitment, NewAccount, BidDelta, BlockHeight, NameFee, NameHash) ->
+    NewOwnerId = aeser_id:create(account, NewAccount),
     Commitment#commitment{
-      owner_id = NewOwnerIdSpec,
+      owner_id = NewOwnerId,
       auction  = ?CLAIM_ATTEMPT,
       name_fee = NameFee,
       name_hash = NameHash,

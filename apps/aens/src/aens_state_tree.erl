@@ -298,7 +298,7 @@ return_name_fee(AccountsTree0, Commitment) ->
     AccountsTree1 = aec_accounts_trees:lock_coins(-ChargedNameFee, AccountsTree0),
 
     OwnerPubKey = aens_commitments:owner_pubkey(Commitment),
-    OwnerAccount0 = aec_accounts_tree:get(OwnerPubKey, AccountsTree0),
+    OwnerAccount0 = aec_accounts_trees:get(OwnerPubKey, AccountsTree0),
     {ok, OwnerAccount1} = aec_accounts:earn(OwnerAccount0, ChargedNameFee),
     aec_accounts_trees:enter(OwnerAccount1, AccountsTree1).
 
