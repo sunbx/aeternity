@@ -3520,7 +3520,13 @@ sophia_signatures_aens(Cfg) ->
     Ct              = ?call(create_contract, NameAcc, aens, {}, #{ amount => 100000 }),
     LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
     Name1           = <<LongPrefix/binary, "bla.test">>,
-    NameFee         = aec_governance:name_claim_fee(aens_commitments:name_length(Name1)),
+    ProtocolVersion = case ?config(protocol, Cfg) of
+                          roma    -> ?ROMA_PROTOCOL_VSN;
+                          minerva -> ?MINERVA_PROTOCOL_VSN;
+                          fortuna -> ?FORTUNA_PROTOCOL_VSN;
+                          lima    -> ?LIMA_PROTOCOL_VSN
+                      end,
+    NameFee         = aec_governance:name_claim_fee(ProtocolVersion, aens_commitments:name_length(Name1)),
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = ?hsh(aens_hash:commitment_hash(NameAscii, Salt1)),
@@ -4981,13 +4987,19 @@ aens_update(PubKey, NameHash, Pointers, Options, S) ->
     {ok, S1} = sign_and_apply_transaction(Tx, PrivKey, S, Height),
     {ok, S1}.
 
-sophia_aens_resolve(_Cfg) ->
+sophia_aens_resolve(Cfg) ->
     state(aect_test_utils:new_state()),
     Acc      = ?call(new_account, 20000000 * aec_test_utils:min_gas_price()),
     Ct       = ?call(create_contract, Acc, aens, {}, #{ amount => 100000 }),
     LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
     Name     = <<LongPrefix/binary, "foo.test">>,
-    NameFee         = aec_governance:name_claim_fee(aens_commitments:name_length(Name)),
+    ProtocolVersion = case ?config(protocol, Cfg) of
+                          roma    -> ?ROMA_PROTOCOL_VSN;
+                          minerva -> ?MINERVA_PROTOCOL_VSN;
+                          fortuna -> ?FORTUNA_PROTOCOL_VSN;
+                          lima    -> ?LIMA_PROTOCOL_VSN
+                      end,
+    NameFee  = aec_governance:name_claim_fee(ProtocolVersion, aens_commitments:name_length(Name)),
     APubkey  = 1,
     OPubkey  = 2,
     CPubkey  = 3,
@@ -5051,7 +5063,13 @@ sophia_aens_transactions(Cfg) ->
                ],
     LongPrefix      = <<"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">>,
     Name1           = <<LongPrefix/binary, "bla.test">>,
-    NameFee         = aec_governance:name_claim_fee(aens_commitments:name_length(Name1)),
+    ProtocolVersion = case ?config(protocol, Cfg) of
+                          roma    -> ?ROMA_PROTOCOL_VSN;
+                          minerva -> ?MINERVA_PROTOCOL_VSN;
+                          fortuna -> ?FORTUNA_PROTOCOL_VSN;
+                          lima    -> ?LIMA_PROTOCOL_VSN
+                      end,
+    NameFee         = aec_governance:name_claim_fee(ProtocolVersion, aens_commitments:name_length(Name1)),
     Salt1           = rand:uniform(10000),
     {ok, NameAscii} = aens_utils:to_ascii(Name1),
     CHash           = aens_hash:commitment_hash(NameAscii, Salt1),
@@ -5064,7 +5082,11 @@ sophia_aens_transactions(Cfg) ->
     NonceBeforePreclaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     {} = ?call(call_contract, Acc, Ct, preclaim, {tuple, []}, {Ct, ?hsh(CHash)},        #{ height => 10 }),
     NonceBeforeClaim = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
-    {} = ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, NameFee}, #{ height => 11 }),
+    {} = if ProtocolVersion >= ?LIMA_PROTOCOL_VSN ->
+                 ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1, NameFee}, #{ height => 11 });
+            true ->
+                 ?call(call_contract, Acc, Ct, claim,    {tuple, []}, {Ct, Name1, Salt1}, #{ height => 11 })
+         end,
     NonceBeforeTransfer = aec_accounts:nonce(aect_test_utils:get_account(Ct, state())),
     StateBeforeTransfer = state(),
     {} = ?call(call_contract, Acc, Ct, transfer, {tuple, []}, {Ct, Acc, NameArg},   #{ height => 12 }),
