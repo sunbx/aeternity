@@ -239,6 +239,7 @@ name_claim_fee_base() ->
     aec_aens_governance:get_base_fee().
 
 name_claim_fee(?LIMA_PROTOCOL_VSN, Length) ->
+    %% should be given a height and then: aec_hard_forks:protocol_effective_at_height(Height)
     aec_aens_governance:init_fee_at_length(Length);
 name_claim_fee(_, _Length) ->
     name_claim_locked_fee().
