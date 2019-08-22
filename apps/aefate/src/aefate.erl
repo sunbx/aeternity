@@ -121,13 +121,18 @@ load_file(FileName, Opts) ->
             Code = aeb_fate_code:deserialize(File),
             SerializedCall = aeb_fate_asm:function_call(Call),
             GasPrice = 1,
+            ContractAddress = <<0:256>>,
             Origin = <<1:256>>,
             Caller = <<1:256>>,
-            Trees = aec_trees:new_without_backend(),
-
+            ChainSpec =
+                #{ preset_accounts => [ {ContractAddress, 0}
+                                      , {Origin, 1000000000000000000000} ]
+                 , state_tree => aec_trees:new_without_backend()
+                 },
+            Trees = populated_trees(ChainSpec),
             TxEnv = tx_env(),
 
-            Spec = #{ contract => <<0:256>>
+            Spec = #{ contract => ContractAddress
                     , call => SerializedCall
                     , gas => 10000000000
                     , value => 0
@@ -184,3 +189,13 @@ tx_env() ->
       aec_headers:new_key_header(Height, PrevHash, PrevKeyHash, RootHash, Miner,
                                  Beneficiary, Target, Evd, Nonce, Time, Version),
       KeyHash, Time, PrevHash).
+
+populated_trees(Map) ->
+    PresetAccounts = maps:get(preset_accounts, Map),
+    StateTrees = maps:get(state_tree, Map, aec_trees:new()),
+    PopulatedAccountsTree =
+        lists:foldl(fun({PubKey, Amount}, T) ->
+                            Account = aec_accounts:new(PubKey, Amount),
+                            aec_accounts_trees:enter(Account, T)
+                    end, aec_trees:accounts(StateTrees), PresetAccounts),
+    aec_trees:set_accounts(StateTrees, PopulatedAccountsTree).
