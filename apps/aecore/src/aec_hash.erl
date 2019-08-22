@@ -29,8 +29,12 @@ hash(_ObjType, Bin) when is_binary(Bin) ->
 %%------------------------------------------------------------------------------
 -spec blake2b_256_hash(hashable()) -> hash().
 blake2b_256_hash(Bin) ->
-    {ok, Hash} = enacl:generichash(?HASH_BYTES, Bin),
-    Hash.
+    try enacl:generichash(?HASH_BYTES, Bin) of
+        {ok, Hash} ->  Hash
+    catch _E:_W -> %% Nif is missing, use Erlang implementation
+            {ok, Hash} = eblake2:blake2b(?HASH_BYTES, Bin),
+            Hash
+    end.
 
 %%------------------------------------------------------------------------------
 %% Calculate the SHA256 hash value of a binary
