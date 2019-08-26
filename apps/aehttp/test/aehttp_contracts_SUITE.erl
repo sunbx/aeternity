@@ -1153,7 +1153,7 @@ remote_gas_test_contract(Config) ->
     call_get(APub, APriv, EncC2Pub, Contract, 100),
     force_fun_calls(Node),
     Balance1 = get_balance(APub),
-    ?assertMatchVM(1600476, 1600010, (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE),
+    ?assertMatchVM(1600476, 1600012, (Balance0 - Balance1) div ?DEFAULT_GAS_PRICE),
 
     %% Test remote call with limited gas
     %% Call contract remote set function with limited gas

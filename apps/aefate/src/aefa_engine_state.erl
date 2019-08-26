@@ -64,6 +64,7 @@
         , push_call_stack/1
         , push_gas_cap/2
         , spend_gas/2
+        , spend_gas_for_new_cells/2
         , update_for_remote_call/3
         ]).
 
@@ -96,6 +97,7 @@
             , current_tvars     :: map()    %% Instantiations for type variables in the current call (needed when type checking return value)
             , functions         :: map()    %% Cache for current contract.
             , gas               :: integer()
+            , created_cells     :: integer()
             , logs              :: [term()]
             , memory            :: map()    %% Environment #{name => val}
             , seen_contracts    :: [pubkey()]
@@ -137,6 +139,7 @@ new(Gas, Value, Spec, Stores, APIState, CodeCache, TraceIO) ->
        , current_tvars     = #{}
        , functions         = #{}
        , gas               = Gas
+       , created_cells     = 0
        , logs              = []
        , memory            = #{}
        , seen_contracts    = []
@@ -245,31 +248,39 @@ push_gas_cap(GasCap, #es{ gas = AvailableGas
 -spec push_accumulator(aeb_fate_data:fate_type(), state()) -> state().
 push_accumulator(V, #es{ accumulator = ?FATE_VOID
                        , accumulator_stack = [] } = ES) ->
-    ES#es{ accumulator = V
-         , accumulator_stack = []};
+    ES1 = ES#es{ accumulator = V
+               , accumulator_stack = []},
+    spend_gas_for_new_cells(1, ES1);
 push_accumulator(V, #es{ accumulator = X
                        , accumulator_stack = Stack } = ES) ->
-    ES#es{ accumulator = V
-         , accumulator_stack = [X|Stack]}.
+    ES1 = ES#es{ accumulator = V
+               , accumulator_stack = [X|Stack]},
+    spend_gas_for_new_cells(1, ES1).
 
 -spec pop_accumulator(state()) -> {aeb_fate_data:fate_type(), state()}.
-pop_accumulator(#es{accumulator = X, accumulator_stack = []} = ES) ->
-    {X, ES#es{accumulator = ?FATE_VOID}};
-pop_accumulator(#es{accumulator = X, accumulator_stack = [V|Stack]} = ES) ->
+pop_accumulator(#es{accumulator = X, accumulator_stack = [], created_cells = C} = ES) ->
+    {X, ES#es{ accumulator = ?FATE_VOID
+             , created_cells = C - 1}};
+pop_accumulator(#es{accumulator = X,
+                    accumulator_stack = [V|Stack],
+                    created_cells = C} = ES) ->
     {X, ES#es{ accumulator = V
              , accumulator_stack = Stack
+             , created_cells = C - 1
            }}.
 
 -spec dup_accumulator(state()) -> state().
 dup_accumulator(#es{accumulator = X, accumulator_stack = Stack} = ES) ->
-    ES#es{ accumulator = X
-         , accumulator_stack = [X|Stack]}.
+    ES1 = ES#es{ accumulator = X
+               , accumulator_stack = [X|Stack]},
+    spend_gas_for_new_cells(1, ES1).
 
 -spec dup_accumulator(pos_integer(), state()) -> state().
 dup_accumulator(N, #es{accumulator = X, accumulator_stack = Stack} = ES) ->
     {X1, Stack1} = get_n(N, [X|Stack]),
-    ES#es{ accumulator = X1
-         , accumulator_stack = [X|Stack1]}.
+    ES1 = ES#es{ accumulator = X1
+               , accumulator_stack = [X|Stack1]},
+    spend_gas_for_new_cells(1, ES1).
 
 get_n(0, [X|XS]) -> {X, [X|XS]};
 get_n(N, [X|XS]) ->
@@ -278,10 +289,20 @@ get_n(N, [X|XS]) ->
 
 -spec drop_accumulator(non_neg_integer(), state()) -> state().
 drop_accumulator(0, ES) -> ES;
-drop_accumulator(N, #es{accumulator_stack = [V|Stack]} = ES) ->
-    drop_accumulator(N-1, ES#es{accumulator = V, accumulator_stack = Stack});
-drop_accumulator(N, #es{accumulator_stack = []} = ES) ->
-    drop_accumulator(N-1, ES#es{accumulator = ?FATE_VOID, accumulator_stack = []}).
+drop_accumulator(N, #es{accumulator_stack = [V|Stack],
+                        created_cells = C
+                       } = ES) ->
+    drop_accumulator(N-1, ES#es{ accumulator = V
+                               , accumulator_stack = Stack
+                               , created_cells = C - 1
+                               });
+drop_accumulator(N, #es{accumulator_stack = [],
+                        created_cells = C
+                       } = ES) ->
+    drop_accumulator(N-1, ES#es{accumulator = ?FATE_VOID
+                               , accumulator_stack = []
+                               , created_cells = C - 1
+                               }).
 
 %%%------------------
 
@@ -301,6 +322,23 @@ spend_gas(X, #es{gas = Gas} = ES) ->
         true  -> aefa_fate:abort(out_of_gas, ES);
         false -> ES#es{gas = NewGas}
     end.
+
+-define(CHEAP_CELLS, 10000).
+-define(CELL_COST_GROWTH, 0.6).
+
+-spec spend_gas_for_new_cells(non_neg_integer(), state()) -> state().
+spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) when NewCells + Cells =< ?CHEAP_CELLS ->
+    TotalCells = Cells + NewCells,
+    spend_gas(NewCells, ES#es{ created_cells = TotalCells });
+spend_gas_for_new_cells(1, #es{ created_cells = Cells } = ES) when Cells >= ?CHEAP_CELLS ->
+    TotalCells = Cells + 1,
+    CellCost = round(math:pow(TotalCells - ?CHEAP_CELLS, ?CELL_COST_GROWTH)),
+    spend_gas(CellCost, ES#es{ created_cells = TotalCells });
+spend_gas_for_new_cells(NewCells, #es{ created_cells = Cells } = ES) when NewCells + Cells > ?CHEAP_CELLS ->
+    TotalCells = Cells + NewCells,
+    CellCost = round(math:pow(TotalCells - ?CHEAP_CELLS, ?CELL_COST_GROWTH)),
+    spend_gas(NewCells * CellCost, ES#es{ created_cells = TotalCells }).
+
 
 %%%------------------
 

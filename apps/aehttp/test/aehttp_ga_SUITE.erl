@@ -197,7 +197,8 @@ attach_account(Pub, Priv, _Config) ->
     ct:pal("Cost: ~p", [Bal0 - Bal1]),
     MGP = aec_test_utils:min_gas_price(),
     AEVMBal = Bal0 - 1000000 * MGP - 411 * MGP,
-    FATEBal = Bal0 - 1000000 * MGP - 10 * MGP,
+    FATEBal = Bal0 - 1000000 * MGP - 17 * MGP,
+    ct:pal("FATEBal: ~p", [FATEBal]),
     ?assertMatchABI(AEVMBal, FATEBal, Bal1),
     ok.
 
@@ -260,7 +261,8 @@ meta_fail(Config) ->
 
     ct:pal("Cost failing inner: ~p", [ABal0 - ABal1]),
     AEVMBal = ABal0 - (MetaFee + 4711 * 1000 * MGP),
-    FATEBal = ABal0 - (MetaFee + 1421 * 1000 * MGP),
+    FATEBal = ABal0 - (MetaFee + 1451 * 1000 * MGP),
+    ct:pal("FATEBal: ~p", [FATEBal]),
     ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 
@@ -286,7 +288,7 @@ meta_spend(Config) ->
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
     AEVMBal = ABal0 - (MetaFee + 4711 * 1000 * MGP + 20000 * MGP + 10000),
-    FATEBal = ABal0 - (MetaFee + 1421 * 1000 * MGP + 20000 * MGP + 10000),
+    FATEBal = ABal0 - (MetaFee + 1451 * 1000 * MGP + 20000 * MGP + 10000),
     ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 
@@ -312,7 +314,7 @@ meta_meta_fail_auth(Config) ->
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
     AEVMBal = ABal0 - (MetaFee + 4711 * 1000 * MGP),
-    FATEBal = ABal0 - (MetaFee + 1421 * 1000 * MGP),
+    FATEBal = ABal0 - (MetaFee + 1451 * 1000 * MGP),
     ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 
@@ -344,7 +346,7 @@ meta_meta_fail(Config) ->
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
     AEVMBal = ABal0 - 2 * (MetaFee + 4711 * 1000 * MGP),
-    FATEBal = ABal0 - 2 * (MetaFee + 1421 * 1000 * MGP),
+    FATEBal = ABal0 - 2 * (MetaFee + 1451 * 1000 * MGP),
     ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 
@@ -375,7 +377,7 @@ meta_meta_spend(Config) ->
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
     AEVMBal = ABal0 - (2 * (MetaFee + 4711 * 1000 * MGP) + 20000 * MGP + 10000),
-    FATEBal = ABal0 - (2 * (MetaFee + 1421 * 1000 * MGP) + 20000 * MGP + 10000),
+    FATEBal = ABal0 - (2 * (MetaFee + 1451 * 1000 * MGP) + 20000 * MGP + 10000),
     ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 
@@ -407,7 +409,7 @@ meta_4_fail(Config) ->
 
     ct:pal("Cost1: ~p", [ABal0 - ABal1]),
     AEVMBal = ABal0 - 3 * (MetaFee + 4711 * 1000 * MGP),
-    FATEBal = ABal0 - 3 * (MetaFee + 1421 * 1000 * MGP),
+    FATEBal = ABal0 - 3 * (MetaFee + 1451 * 1000 * MGP),
     ?assertMatchABI(AEVMBal, FATEBal, ABal1),
     ok.
 

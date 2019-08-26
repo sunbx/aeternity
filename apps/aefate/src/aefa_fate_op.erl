@@ -285,7 +285,9 @@ push(Arg0, EngineState) ->
     un_op(get, {{stack, 0}, Arg0}, EngineState).
 
 %% Consider moving the call to aefa_fate_eval directly...
-dup(EngineState) -> aefa_fate:dup(EngineState).
+dup(EngineState) ->
+    aefa_fate:dup(EngineState).
+
 
 dup(Arg0, EngineState) ->
     {Value, ES1} = get_op_arg(Arg0, EngineState),
@@ -380,9 +382,10 @@ tuple(Arg0, Arg1, EngineState) ->
     end.
 
 make_tuple(To, Size, ES) ->
-    {Elements, ES2} = aefa_fate:pop_n(Size, ES),
+    {Elements, ES1} = aefa_fate:pop_n(Size, ES),
     Tuple = list_to_tuple(Elements),
     FateTuple = aeb_fate_data:make_tuple(Tuple),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Size + 2, ES1),
     write(To, FateTuple, ES2).
 
 
@@ -404,6 +407,8 @@ element_op(To, Which, TupleArg, ES) ->
             end
     end.
 
+%% Setting an element of a tuple actually creates a copy of all elements in
+%% the original tuple, so we pay gas in relation to the size of the tuple.
 setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     {Index, ES1} = get_op_arg(Arg1, EngineState),
     {FateTuple, ES2} = get_op_arg(Arg2, ES1),
@@ -414,10 +419,12 @@ setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
         false -> aefa_fate:abort({bad_arguments_to_setelement, Index, FateTuple}, ES3);
         true ->
             ?FATE_TUPLE(Tuple) = FateTuple,
-            case size(Tuple) > Index of
+            Size = size(Tuple),
+            case Size > Index of
                 true ->
                     NewT = ?FATE_TUPLE(erlang:setelement(Index+1, Tuple, Element)),
-                    write(Arg0, NewT, ES3);
+                    ES4 = aefa_engine_state:spend_gas_for_new_cells(Size + 2, ES3),
+                    write(Arg0, NewT, ES4);
                 false ->
                     aefa_fate:abort({element_index_out_of_bounds, Index}, ES3)
             end
@@ -428,9 +435,10 @@ setelement(Arg0, Arg1, Arg2, Arg3, EngineState) ->
 %% Map instructions
 %% ------------------------------------------------------
 map_empty(Arg0, EngineState) ->
-    un_op(get, {Arg0,
-                {immediate, aeb_fate_data:make_map(#{})}},
-          EngineState).
+    ES1 = un_op(get, {Arg0,
+                      {immediate, aeb_fate_data:make_map(#{})}},
+                EngineState),
+    aefa_engine_state:spend_gas_for_new_cells(2, ES1).
 
 map_lookup(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(map_lookup, {Arg0, Arg1, Arg2}, EngineState).
@@ -438,8 +446,10 @@ map_lookup(Arg0, Arg1, Arg2, EngineState) ->
 map_lookup(Arg0, Arg1, Arg2, Arg3, EngineState) ->
     ter_op(map_lookup_default, {Arg0, Arg1, Arg2, Arg3}, EngineState).
 
+%% TODO: What is the memory cost of a map update?
 map_update(Arg0, Arg1, Arg2, Arg3, EngineState) ->
-    ter_op(map_update, {Arg0, Arg1, Arg2, Arg3}, EngineState).
+    ES1 = ter_op(map_update, {Arg0, Arg1, Arg2, Arg3}, EngineState),
+    aefa_engine_state:spend_gas_for_new_cells(2, ES1).
 
 map_delete(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(map_delete, {Arg0, Arg1, Arg2}, EngineState).
@@ -448,10 +458,18 @@ map_member(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(map_member, {Arg0, Arg1, Arg2}, EngineState).
 
 map_from_list(Arg0, Arg1, EngineState) ->
-    un_op(map_from_list, {Arg0, Arg1}, EngineState).
+    {List, ES1} = get_op_arg(Arg1, EngineState),
+    Map = gop(map_from_list, List, ES1),
+    ES2 = write(Arg0, Map, ES1),
+    Size = map_size(?FATE_MAP_VALUE(Map)),
+    aefa_engine_state:spend_gas_for_new_cells(Size + 2, ES2).
 
 map_to_list(Arg0, Arg1, EngineState) ->
-    un_op(map_to_list, {Arg0, Arg1}, EngineState).
+    {Map, ES1} = get_op_arg(Arg1, EngineState),
+    List = gop(map_to_list, Map, ES1),
+    ES2 = write(Arg0, List, ES1),
+    Size = map_size(?FATE_MAP_VALUE(Map)),
+    aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES2).
 
 map_size_(Arg0, Arg1, EngineState) ->
     un_op(map_size, {Arg0, Arg1}, EngineState).
@@ -468,7 +486,8 @@ is_nil(Arg0, Arg1, EngineState) ->
     un_op(is_nil, {Arg0, Arg1}, EngineState).
 
 cons(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(cons, {Arg0, Arg1, Arg2}, EngineState).
+    ES1 = bin_op(cons, {Arg0, Arg1, Arg2}, EngineState),
+    aefa_engine_state:spend_gas_for_new_cells(2, ES1).
 
 hd(Arg0, Arg1, EngineState) ->
     un_op(hd, {Arg0, Arg1}, EngineState).
@@ -480,29 +499,59 @@ length(Arg0, Arg1, EngineState) ->
     un_op(length, {Arg0, Arg1}, EngineState).
 
 append(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(append, {Arg0, Arg1, Arg2}, EngineState).
+    {List, ES1} = get_op_arg(Arg1, EngineState),
+    ES2 = bin_op(append, {Arg0, Arg1, Arg2}, ES1),
+    %% We will create a new copy of the first list.
+    Size = length(?FATE_LIST_VALUE(List)),
+    aefa_engine_state:spend_gas_for_new_cells(Size * 2, ES2).
+
 
 %% ------------------------------------------------------
 %% String instructions
 %% ------------------------------------------------------
 
 str_join(Arg0, Arg1, Arg2, EngineState) ->
-    bin_op(str_join, {Arg0, Arg1, Arg2}, EngineState).
+    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
+    {RightValue, ES2} = get_op_arg(Arg2, ES1),
+    Result = gop(str_join, LeftValue, RightValue, ES2),
+    Cells = string_cells(Result),
+    ES3 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES2),
+    write(Arg0, Result, ES3).
 
 str_length(Arg0, Arg1, EngineState) ->
     un_op(str_length, {Arg0, Arg1}, EngineState).
 
 int_to_str(Arg0, Arg1, EngineState) ->
-    un_op(int_to_str, {Arg0, Arg1}, EngineState).
+    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(int_to_str, LeftValue, ES1),
+    Cells = string_cells(Result),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
+    write(Arg0, Result, ES2).
 
 addr_to_str(Arg0, Arg1, EngineState) ->
-    un_op(addr_to_str, {Arg0, Arg1}, EngineState).
+    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(addr_to_str, LeftValue, ES1),
+    Cells = string_cells(Result),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
+    write(Arg0, Result, ES2).
 
 str_reverse(Arg0, Arg1, EngineState) ->
-    un_op(str_reverse, {Arg0, Arg1}, EngineState).
+    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(str_reverse, LeftValue, ES1),
+    Cells = string_cells(Result),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
+    write(Arg0, Result, ES2).
 
 int_to_addr(Arg0, Arg1, EngineState) ->
-    un_op(int_to_addr, {Arg0, Arg1}, EngineState).
+    {LeftValue, ES1} = get_op_arg(Arg1, EngineState),
+    Result = gop(int_to_addr, LeftValue, ES1),
+    Cells = string_cells(Result),
+    ES2 = aefa_engine_state:spend_gas_for_new_cells(Cells + 1, ES1),
+    write(Arg0, Result, ES2).
+
+string_cells(String) when ?IS_FATE_STRING(String) ->
+    byte_size(?FATE_STRING_VALUE(String)) div 64.
+
 
 %% ------------------------------------------------------
 %% Variant instructions
