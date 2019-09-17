@@ -17,6 +17,8 @@
          persisted_valid_genesis_block/0
         ]).
 
+-export([lock_insert_tables/0]).
+
 -export([transaction/1,
          dirty/1,
          ensure_transaction/1,
@@ -123,6 +125,17 @@
 
 -define(TX_IN_MEMPOOL, []).
 -define(PERSIST, true).
+
+lock_insert_tables() ->
+    mnesia:lock({table, aec_account_state}, write),
+    mnesia:lock({table, aec_oracle_cache}, write),
+    mnesia:lock({table, aec_oracle_state}, write),
+    mnesia:lock({table, aec_channel_state}, write),
+    mnesia:lock({table, aec_name_service_cache}, write),
+    mnesia:lock({table, aec_name_service_state}, write),
+    mnesia:lock({table, aec_discovered_pof}, write),
+    ok.
+
 
 tables() -> tables(ram).
 

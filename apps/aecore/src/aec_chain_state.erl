@@ -390,7 +390,9 @@ internal_insert(Node, Block, Origin) ->
             %% Only add the block if we can do the whole
             %% transitive operation (i.e., calculate all the state
             %% trees, and update the pointers)
-            Fun = fun() -> internal_insert_transaction(Node, Block, Origin)
+            Fun = fun() ->
+                          aec_db:lock_insert_tables(),
+                          internal_insert_transaction(Node, Block, Origin)
                   end,
             try aec_db:transaction(Fun)
             catch exit:{aborted, {throw, ?internal_error(What)}} -> internal_error(What)
