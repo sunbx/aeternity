@@ -122,14 +122,14 @@
 
 %% start a transaction if there isn't already one
 -define(t(Expr),
-        case get(mnesia_activity_state) of
-            undefined ->
-                transaction(fun() -> Expr end);
-            {_, _, non_transaction} ->
-                %% Transaction inside a dirty context; rely on mnesia to handle it
-                Expr;
-            _ -> Expr
-        end).
+    case get(mnesia_activity_state) of
+        undefined ->
+            transaction(fun() -> Expr end);
+        {_, _, non_transaction} ->
+            %% Transaction inside a dirty context; rely on mnesia to handle it
+            transaction(fun() -> Expr end);
+        _ -> Expr
+    end).
 
 -define(TX_IN_MEMPOOL, []).
 -define(PERSIST, true).
@@ -273,19 +273,7 @@ ensure_transaction(Fun) when is_function(Fun, 0) ->
     %% TODO: actually, some non-transactions also have an activity state
     case get(mnesia_activity_state) of
         undefined ->
-            case get(aec_db_activity_state) of
-                trial ->
-                    %% We are in an optimistic dirty context
-                    Fun();
-                undefined ->
-                    put(aec_db_activity_state, trial),
-                    try dirty(Fun)
-                    catch throw:{?MODULE, needed_write} ->
-                            transaction(Fun)
-                    after
-                        erase(aec_db_activity_state)
-                    end
-            end;
+            transaction(Fun);
         {_, _, non_transaction} ->
             %% Transaction inside a dirty context; rely on mnesia to handle it
             transaction(Fun);
@@ -306,34 +294,13 @@ read(Tab, Key) ->
     mnesia:read(Tab, Key).
 
 write(Obj) ->
-    case get(mnesia_activity_state) of
-        undefined ->
-            throw({?MODULE, needed_write});
-        {_, _, non_transaction} ->
-            throw({?MODULE, needed_write});
-        _ ->
-            mnesia:write(Obj)
-    end.
+    mnesia:write(Obj).
 
 write(Tab, Obj) ->
-    case get(mnesia_activity_state) of
-        undefined ->
-            throw({?MODULE, needed_write});
-        {_, _, non_transaction} ->
-            throw({?MODULE, needed_write});
-        _ ->
-            mnesia:write(Tab, Obj, write)
-    end.
+    mnesia:write(Tab, Obj, write).
 
 delete(Tab, Key) ->
-    case get(mnesia_activity_state) of
-        undefined ->
-            throw({?MODULE, needed_write});
-        {_, _, non_transaction} ->
-            throw({?MODULE, needed_write});
-        _ ->
-            mnesia:delete(Tab, Key, write)
-    end.
+    mnesia:delete(Tab, Key, write).
 
 write_block(Block) ->
     Header = aec_blocks:to_header(Block),
