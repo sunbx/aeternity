@@ -121,7 +121,15 @@
         {Record, tab(Mode, Record, record_info(fields, Record), Extra)}).
 
 %% start a transaction if there isn't already one
--define(t(Expr), ensure_transaction(fun() -> Expr end)).
+-define(t(Expr),
+        case get(mnesia_activity_state) of
+            undefined ->
+                transaction(fun() -> Expr end);
+            {_, _, non_transaction} ->
+                %% Transaction inside a dirty context; rely on mnesia to handle it
+                Expr;
+            _ -> Expr
+        end).
 
 -define(TX_IN_MEMPOOL, []).
 -define(PERSIST, true).
@@ -131,6 +139,7 @@ lock_insert_tables() ->
     mnesia:lock({table, aec_oracle_cache}, write),
     mnesia:lock({table, aec_oracle_state}, write),
     mnesia:lock({table, aec_channel_state}, write),
+    mnesia:lock({table, aec_contract_state}, write),
     mnesia:lock({table, aec_name_service_cache}, write),
     mnesia:lock({table, aec_name_service_state}, write),
     mnesia:lock({table, aec_discovered_pof}, write),
