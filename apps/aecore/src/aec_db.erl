@@ -251,7 +251,19 @@ ensure_transaction(Fun) when is_function(Fun, 0) ->
     %% TODO: actually, some non-transactions also have an activity state
     case get(mnesia_activity_state) of
         undefined ->
-            transaction(Fun);
+            case get(aec_db_activity_state) of
+                trial ->
+                    %% We are in an optimistic dirty context
+                    Fun();
+                undefined ->
+                    put(aec_db_activity_state, trial),
+                    try dirty(Fun)
+                    catch throw:{?MODULE, needed_write} ->
+                            transaction(Fun)
+                    after
+                        erase(aec_db_activity_state)
+                    end
+            end;
         {_, _, non_transaction} ->
             %% Transaction inside a dirty context; rely on mnesia to handle it
             transaction(Fun);
@@ -271,6 +283,16 @@ ensure_activity(PreferedType, Fun) when is_function(Fun, 0) ->
 read(Tab, Key) ->
     mnesia:read(Tab, Key).
 
+write(Obj) ->
+    case get(mnesia_activity_state) of
+        undefined ->
+            throw({?MODULE, needed_write});
+        {_, _, non_transaction} ->
+            throw({?MODULE, needed_write});
+        _ ->
+            mnesia:write(Obj)
+    end.
+
 write(Tab, Obj) ->
     mnesia:write(Tab, Obj, write).
 
@@ -287,7 +309,7 @@ write_block(Block, Hash) ->
     Height = aec_headers:height(Header),
     case aec_blocks:type(Block) of
         key ->
-            ?t(mnesia:write(#aec_headers{key = Hash,
+            ?t(write(#aec_headers{key = Hash,
                                          value = Header,
                                          height = Height})),
             ok;
@@ -300,11 +322,11 @@ write_block(Block, Hash) ->
                                    STxHash
                                end
                                || STx <- Txs],
-                   mnesia:write(#aec_blocks{key = Hash,
+                   write(#aec_blocks{key = Hash,
                                             txs = TxHashes,
                                             pof = aec_blocks:pof(Block)
                                            }),
-                   mnesia:write(#aec_headers{key = Hash,
+                   write(#aec_headers{key = Hash,
                                              value = Header,
                                              height = Height})
                end)
@@ -407,12 +429,12 @@ find_discovered_pof(Hash) ->
     end.
 
 write_discovered_pof(Hash, PoF) ->
-    ?t(mnesia:write(#aec_discovered_pof{key = Hash, value = PoF})).
+    ?t(write(#aec_discovered_pof{key = Hash, value = PoF})).
 
 write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees, Fraud) ->
     ?t(begin
            Trees1 = aec_trees:serialize_for_db(aec_trees:commit_to_db(Trees)),
-           mnesia:write(#aec_block_state{key = Hash, value = Trees1,
+           write(#aec_block_state{key = Hash, value = Trees1,
                                          difficulty = AccDifficulty,
                                          fork_id = ForkId,
                                          fees = Fees,
@@ -422,37 +444,37 @@ write_block_state(Hash, Trees, AccDifficulty, ForkId, Fees, Fraud) ->
       ).
 
 write_accounts_node(Hash, Node) ->
-    ?t(mnesia:write(#aec_account_state{key = Hash, value = Node})).
+    ?t(write(#aec_account_state{key = Hash, value = Node})).
 
 write_calls_node(Hash, Node) ->
-    ?t(mnesia:write(#aec_call_state{key = Hash, value = Node})).
+    ?t(write(#aec_call_state{key = Hash, value = Node})).
 
 write_channels_node(Hash, Node) ->
-    ?t(mnesia:write(#aec_channel_state{key = Hash, value = Node})).
+    ?t(write(#aec_channel_state{key = Hash, value = Node})).
 
 write_contracts_node(Hash, Node) ->
-    ?t(mnesia:write(#aec_contract_state{key = Hash, value = Node})).
+    ?t(write(#aec_contract_state{key = Hash, value = Node})).
 
 write_ns_node(Hash, Node) ->
-    ?t(mnesia:write(#aec_name_service_state{key = Hash, value = Node})).
+    ?t(write(#aec_name_service_state{key = Hash, value = Node})).
 
 write_ns_cache_node(Hash, Node) ->
-    ?t(mnesia:write(#aec_name_service_cache{key = Hash, value = Node})).
+    ?t(write(#aec_name_service_cache{key = Hash, value = Node})).
 
 write_oracles_node(Hash, Node) ->
-    ?t(mnesia:write(#aec_oracle_state{key = Hash, value = Node})).
+    ?t(write(#aec_oracle_state{key = Hash, value = Node})).
 
 write_oracles_cache_node(Hash, Node) ->
-    ?t(mnesia:write(#aec_oracle_cache{key = Hash, value = Node})).
+    ?t(write(#aec_oracle_cache{key = Hash, value = Node})).
 
 write_genesis_hash(Hash) when is_binary(Hash) ->
-    ?t(mnesia:write(#aec_chain_state{key = genesis_hash, value = Hash})).
+    ?t(write(#aec_chain_state{key = genesis_hash, value = Hash})).
 
 write_top_block_hash(Hash) when is_binary(Hash) ->
-    ?t(mnesia:write(#aec_chain_state{key = top_block_hash, value = Hash})).
+    ?t(write(#aec_chain_state{key = top_block_hash, value = Hash})).
 
 write_top_block_height(Height) when is_integer(Height) ->
-    ?t(mnesia:write(#aec_chain_state{key = top_block_height, value = Height})).
+    ?t(write(#aec_chain_state{key = top_block_height, value = Height})).
 
 get_genesis_hash() ->
     get_chain_state_value(genesis_hash).
