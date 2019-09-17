@@ -294,10 +294,24 @@ write(Obj) ->
     end.
 
 write(Tab, Obj) ->
-    mnesia:write(Tab, Obj, write).
+    case get(mnesia_activity_state) of
+        undefined ->
+            throw({?MODULE, needed_write});
+        {_, _, non_transaction} ->
+            throw({?MODULE, needed_write});
+        _ ->
+            mnesia:write(Tab, Obj, write)
+    end.
 
 delete(Tab, Key) ->
-    mnesia:delete(Tab, Key, write).
+    case get(mnesia_activity_state) of
+        undefined ->
+            throw({?MODULE, needed_write});
+        {_, _, non_transaction} ->
+            throw({?MODULE, needed_write});
+        _ ->
+            mnesia:delete(Tab, Key, write)
+    end.
 
 write_block(Block) ->
     Header = aec_blocks:to_header(Block),
