@@ -392,7 +392,7 @@ internal_insert(Node, Block, Origin) ->
             %% trees, and update the pointers)
             Fun = fun() -> internal_insert_transaction(Node, Block, Origin)
                   end,
-            try aec_db:ensure_transaction(Fun)
+            try aec_db:transaction(Fun)
             catch exit:{aborted, {throw, ?internal_error(What)}} -> internal_error(What)
             end;
         {ok, Node} -> ok;
