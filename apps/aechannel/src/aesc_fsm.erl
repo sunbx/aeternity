@@ -3166,7 +3166,10 @@ report_info(DoRpt, Msg0, #data{role = Role, client = Client} = D) ->
     end,
     ok.
 
-rpt_message(Msg, #data{ on_chain_id = undefined }) ->
+rpt_message(#{temporary_channel_id := ChId}, #data{on_chain_id = undefined})
+  when ChId =/= undefined ->
+    Msg#{ channel_id => ChId };
+rpt_message(Msg, #data{on_chain_id = undefined}) ->
     Msg;
 rpt_message(Msg, #data{on_chain_id = OnChainId}) ->
     Msg#{ channel_id => OnChainId }.
