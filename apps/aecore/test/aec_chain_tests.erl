@@ -1705,7 +1705,7 @@ token_supply_auctions() ->
     Fee  = 100000 * aec_test_utils:min_gas_price(),
     NameFee = 400000000000000000,
     Salt = 123,
-    Name1 = <<"expensive-name-in-auction.aet">>,
+    Name1 = <<"expensive.aet">>,
     Name2 = <<"this-name-is-too-long-to-end-up-in-an-auction.aet">>,
     PreclaimFun =
         fun(Address, Nonce, Name) ->
