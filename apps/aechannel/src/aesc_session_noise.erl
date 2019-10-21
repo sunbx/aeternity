@@ -102,8 +102,6 @@ shutdown           (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN     , Msg}).
 shutdown_ack       (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ACK , Msg}).
 shutdown_error     (Session, Msg) -> cast(Session, {msg, ?SHUTDOWN_ERR , Msg}).
 
-close(undefined) ->
-    ok;
 close(Session) ->
     try call(Session, close)
     ?_catch_(E, R, StackTrace)
