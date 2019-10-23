@@ -165,6 +165,7 @@
         , sophia_higher_order_state/1
         , sophia_bignum/1
         , sophia_call_caller/1
+        , sophia_gas/1
         , create_store/1
         , read_store/1
         , store_zero_value/1
@@ -309,6 +310,7 @@ groups() ->
     [ {aevm, [], ?ALL_TESTS ++ ?AEVM_SPECIFIC}
     , {fate, [], ?ALL_TESTS ++ ?FATE_SPECIFIC}
     , {protocol_interaction, [], [ sophia_vm_interaction
+                                 , sophia_gas
                                  , create_contract_init_error_no_create_account
                                  ]}
     , {transactions, [], [ create_contract
@@ -1703,6 +1705,203 @@ sophia_call_caller(_Cfg) ->
 
     ok.
 
+sophia_gas(Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGasPrice   = 1000000000,
+    Acc           = ?call(new_account, 1000 * MinGasPrice * MinGasPrice),
+    ForkHeights   = ?config(fork_heights, Cfg),
+    RomaHeight    = maps:get(minerva, ForkHeights) - 1,
+    MinervaHeight = maps:get(fortuna, ForkHeights) - 1,
+    FortunaHeight = maps:get(lima, ForkHeights) - 1,
+    LimaHeight    = maps:get(lima, ForkHeights),
+    Spec          = #{amount => 0, gas_price => MinGasPrice,
+                      fee => 5000000 * MinGasPrice, return_gas_used => true},
+    RomaSpec      = Spec#{height => RomaHeight,    vm_version => ?VM_AEVM_SOPHIA_1},
+    MinervaSpec   = Spec#{height => MinervaHeight, vm_version => ?VM_AEVM_SOPHIA_2},
+    FortunaSpec   = Spec#{height => FortunaHeight, vm_version => ?VM_AEVM_SOPHIA_3},
+    LimaSpec      = Spec#{height => LimaHeight,    vm_version => ?VM_AEVM_SOPHIA_4},
+    LimaSpecFate  = Spec#{height => LimaHeight,    vm_version => ?VM_FATE_SOPHIA_1, abi_version => ?ABI_FATE_SOPHIA_1},
+
+    SophiaVsn = get('$sophia_version'),
+    put('$sophia_version', ?SOPHIA_ROMA),
+    {ok, ICode1}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_ROMA),
+    {ok, ACode1}  = compile_contract_vsn(authorize_nonce, ?CONTRACT_SERIALIZATION_VSN_ROMA),
+    put('$sophia_version', ?SOPHIA_MINERVA),
+    {ok, ICode2}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_MINERVA),
+    {ok, ACode2}  = compile_contract_vsn(authorize_nonce, ?CONTRACT_SERIALIZATION_VSN_MINERVA),
+    put('$sophia_version', ?SOPHIA_FORTUNA),
+    {ok, ICode3}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_MINERVA),
+    {ok, ACode3}  = compile_contract_vsn(authorize_nonce, ?CONTRACT_SERIALIZATION_VSN_MINERVA),
+    put('$sophia_version', ?SOPHIA_LIMA_AEVM),
+    {ok, ICode4}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_LIMA),
+    {ok, ACode4}  = compile_contract_vsn(authorize_nonce, ?CONTRACT_SERIALIZATION_VSN_LIMA),
+    put('$sophia_version', ?SOPHIA_LIMA_FATE),
+    {ok, ICode5}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_LIMA),
+    {ok, ACode5}  = compile_contract_vsn(authorize_nonce, ?CONTRACT_SERIALIZATION_VSN_LIMA),
+    put('$sophia_version', SophiaVsn),
+
+    %% Create contracts on all sides of the fork
+    {CIRoma, GIRoma}       = ?call(create_contract_with_code, Acc, ICode1, {}, RomaSpec),
+    {CARoma, GARoma}       = ?call(create_contract_with_code, Acc, ACode1, {}, RomaSpec),
+    {CIMinerva, GIMinerva} = ?call(create_contract_with_code, Acc, ICode2, {}, MinervaSpec),
+    {CAMinerva, GAMinerva} = ?call(create_contract_with_code, Acc, ACode2, {}, MinervaSpec),
+    {CIFortuna, GIFortuna} = ?call(create_contract_with_code, Acc, ICode3, {}, FortunaSpec),
+    {CAFortuna, GAFortuna} = ?call(create_contract_with_code, Acc, ACode3, {}, FortunaSpec),
+    {CILima, GILima}       = ?call(create_contract_with_code, Acc, ICode4, {}, LimaSpec),
+    {CALima, GALima}       = ?call(create_contract_with_code, Acc, ACode4, {}, LimaSpec),
+    put('$abi_version', ?ABI_FATE_SOPHIA_1),
+    {CILimaF, GILimaF}     = ?call(create_contract_with_code, Acc, ICode5, {}, LimaSpecFate),
+    {CALimaF, GALimaF}     = ?call(create_contract_with_code, Acc, ACode5, {}, LimaSpecFate),
+
+    ct:pal("Gas for init - identity:\n"
+           "Roma:     ~p\n" "Minerva:  ~p\n"
+           "Fortuna:  ~p\n" "LimaAEVM: ~p\n\n"
+           "LimaFate: ~p", [GIRoma, GIMinerva, GIFortuna, GILima, GILimaF]),
+
+    ct:pal("Gas for init - authorize_nonce:\n"
+           "Roma:     ~p\n" "Minerva:  ~p\n"
+           "Fortuna:  ~p\n" "LimaAEVM: ~p\n\n"
+           "LimaFate: ~p", [GARoma, GAMinerva, GAFortuna, GALima, GALimaF]),
+
+    %% Calling identity
+    put('$abi_version', ?ABI_AEVM_SOPHIA_1),
+    {_, GIR_R} = ?call(call_contract, Acc, CIRoma, main, word, {0}, RomaSpec),
+
+    {_, GIR_M} = ?call(call_contract, Acc, CIRoma,    main, word, {0}, MinervaSpec),
+    {_, GIM_M} = ?call(call_contract, Acc, CIMinerva, main, word, {0}, MinervaSpec),
+
+    {_, GIR_F} = ?call(call_contract, Acc, CIRoma,    main, word, {0}, FortunaSpec),
+    {_, GIM_F} = ?call(call_contract, Acc, CIMinerva, main, word, {0}, FortunaSpec),
+    {_, GIF_F} = ?call(call_contract, Acc, CIFortuna, main, word, {0}, FortunaSpec),
+
+    {_, GIR_L} = ?call(call_contract, Acc, CIRoma,    main, word, {0}, LimaSpec),
+    {_, GIM_L} = ?call(call_contract, Acc, CIMinerva, main, word, {0}, LimaSpec),
+    {_, GIF_L} = ?call(call_contract, Acc, CIFortuna, main, word, {0}, LimaSpec),
+    {_, GIL_L} = ?call(call_contract, Acc, CILima,    main, word, {0}, LimaSpec),
+
+    ct:pal("Calling identity AEVM:\n"
+           "Roma    - Roma:    ~p\n" "Roma    - Minerva: ~p\n"
+           "Minerva - Minerva: ~p\n" "Roma    - Fortuna: ~p\n"
+           "Minerva - Fortuna: ~p\n" "Fortuna - Fortuna: ~p\n"
+           "Roma    - Lima:    ~p\n" "Minerva - Lima:    ~p\n"
+           "Fortuna - Lima:    ~p\n" "Lima    - Lima:    ~p\n",
+           [GIR_R, GIR_M, GIM_M, GIR_F, GIM_F, GIF_F, GIR_L, GIM_L, GIF_L, GIL_L]),
+
+    put('$abi_version', ?ABI_FATE_SOPHIA_1),
+    GILF = [ begin
+                 {_, Gas} = ?call(call_contract, Acc, CILimaF, main, word, {N}, LimaSpecFate),
+                 {N, Gas}
+             end || N <- [-100, 0, 25, 50, 64, 100, 500, 1000] ],
+
+    ct:pal("Calling identity FATE:\n~s\n", [[io_lib:format("main(~p): ~p\n", [N, G]) || {N, G} <- GILF ]]),
+
+    %% Calling check_nonce
+    put('$abi_version', ?ABI_AEVM_SOPHIA_1),
+    Run1 = fun(Ct, Sp) ->  ?call(call_contract, Acc, Ct, check_nonce, bool, {0}, Sp) end,
+    {_, GA1R_R} = Run1(CARoma, RomaSpec),       L_GA1R_R = limit(Run1, CARoma, RomaSpec, GA1R_R),
+
+    {_, GA1R_M} = Run1(CARoma, MinervaSpec),    L_GA1R_M = limit(Run1, CARoma, MinervaSpec, GA1R_M),
+    {_, GA1M_M} = Run1(CAMinerva, MinervaSpec), L_GA1M_M = limit(Run1, CAMinerva, MinervaSpec, GA1M_M),
+
+    {_, GA1R_F} = Run1(CARoma, FortunaSpec),    L_GA1R_F = limit(Run1, CARoma, FortunaSpec, GA1R_F),
+    {_, GA1M_F} = Run1(CAMinerva, FortunaSpec), L_GA1M_F = limit(Run1, CAMinerva, FortunaSpec, GA1M_F),
+    {_, GA1F_F} = Run1(CAFortuna, FortunaSpec), L_GA1F_F = limit(Run1, CAFortuna, FortunaSpec, GA1F_F),
+
+    {_, GA1R_L} = Run1(CARoma, LimaSpec),       L_GA1R_L = limit(Run1, CARoma, LimaSpec, GA1R_L),
+    {_, GA1M_L} = Run1(CAMinerva, LimaSpec),    L_GA1M_L = limit(Run1, CAMinerva, LimaSpec, GA1M_L),
+    {_, GA1F_L} = Run1(CAFortuna, LimaSpec),    L_GA1F_L = limit(Run1, CAFortuna, LimaSpec, GA1F_L),
+    {_, GA1L_L} = Run1(CALima, LimaSpec),       L_GA1L_L = limit(Run1, CALima, LimaSpec, GA1L_L),
+
+    ct:pal("Calling check_nonce AEVM:\n"
+           "Roma    - Roma:    ~p (~p)\n" "Roma    - Minerva: ~p (~p)\n"
+           "Minerva - Minerva: ~p (~p)\n" "Roma    - Fortuna: ~p (~p)\n"
+           "Minerva - Fortuna: ~p (~p)\n" "Fortuna - Fortuna: ~p (~p)\n"
+           "Roma    - Lima:    ~p (~p)\n" "Minerva - Lima:    ~p (~p)\n"
+           "Fortuna - Lima:    ~p (~p)\n" "Lima    - Lima:    ~p (~p)\n",
+           [GA1R_R, L_GA1R_R, GA1R_M, L_GA1R_M, GA1M_M, L_GA1M_M, GA1R_F, L_GA1R_F, GA1M_F, L_GA1M_F,
+            GA1F_F, L_GA1F_F, GA1R_L, L_GA1R_L, GA1M_L, L_GA1M_L, GA1F_L, L_GA1F_L, GA1L_L, L_GA1L_L]),
+
+    put('$abi_version', ?ABI_FATE_SOPHIA_1),
+    GA1LF = [ begin
+                  {_, Gas} = ?call(call_contract, Acc, CALimaF, check_nonce, bool, {N}, LimaSpecFate),
+                  {N, Gas}
+              end || N <- lists:seq(0, 100) ],
+
+    ct:pal("Calling check_nonce FATE:\n~s\n", [[io_lib:format("main(~p): ~p\n", [N, G]) || {N, G} <- [hd(GA1LF), lists:last(GA1LF)]]]),
+
+    %% Calling n_checks
+    put('$abi_version', ?ABI_AEVM_SOPHIA_1),
+    {_, GA2R_R} = ?call(call_contract, Acc, CARoma,    n_checks, word, {}, RomaSpec),
+
+    {_, GA2R_M} = ?call(call_contract, Acc, CARoma,    n_checks, word, {}, MinervaSpec),
+    {_, GA2M_M} = ?call(call_contract, Acc, CAMinerva, n_checks, word, {}, MinervaSpec),
+
+    {_, GA2R_F} = ?call(call_contract, Acc, CARoma,    n_checks, word, {}, FortunaSpec),
+    {_, GA2M_F} = ?call(call_contract, Acc, CAMinerva, n_checks, word, {}, FortunaSpec),
+    {_, GA2F_F} = ?call(call_contract, Acc, CAFortuna, n_checks, word, {}, FortunaSpec),
+
+    {_, GA2R_L} = ?call(call_contract, Acc, CARoma,    n_checks, word, {}, LimaSpec),
+    {_, GA2M_L} = ?call(call_contract, Acc, CAMinerva, n_checks, word, {}, LimaSpec),
+    {_, GA2F_L} = ?call(call_contract, Acc, CAFortuna, n_checks, word, {}, LimaSpec),
+    {_, GA2L_L} = ?call(call_contract, Acc, CALima,    n_checks, word, {}, LimaSpec),
+
+    ct:pal("Calling n_checks AEVM:\n"
+           "Roma    - Roma:    ~p\n" "Roma    - Minerva: ~p\n"
+           "Minerva - Minerva: ~p\n" "Roma    - Fortuna: ~p\n"
+           "Minerva - Fortuna: ~p\n" "Fortuna - Fortuna: ~p\n"
+           "Roma    - Lima:    ~p\n" "Minerva - Lima:    ~p\n"
+           "Fortuna - Lima:    ~p\n" "Lima    - Lima:    ~p\n",
+           [GA2R_R, GA2R_M, GA2M_M, GA2R_F, GA2M_F, GA2F_F, GA2R_L, GA2M_L, GA2F_L, GA2L_L]),
+
+    put('$abi_version', ?ABI_FATE_SOPHIA_1),
+    GA2LF = [ begin
+                  {_, Gas} = ?call(call_contract, Acc, CALimaF, n_checks, word, {}, LimaSpecFate),
+                  Gas
+              end || _N <- lists:seq(0, 1) ],
+
+    ct:pal("Calling check_nonce FATE:\n~s\n", [[io_lib:format("n_checks(): ~p\n", [G]) || G <- lists:usort(GA2LF) ]]),
+
+    %% Calling nonce_correct
+    put('$abi_version', ?ABI_AEVM_SOPHIA_1),
+    {_, GA3R_R} = ?call(call_contract, Acc, CARoma,    nonce_correct, bool, {1}, RomaSpec),
+
+    {_, GA3R_M} = ?call(call_contract, Acc, CARoma,    nonce_correct, bool, {2}, MinervaSpec),
+    {_, GA3M_M} = ?call(call_contract, Acc, CAMinerva, nonce_correct, bool, {1}, MinervaSpec),
+
+    {_, GA3R_F} = ?call(call_contract, Acc, CARoma,    nonce_correct, bool, {3}, FortunaSpec),
+    {_, GA3M_F} = ?call(call_contract, Acc, CAMinerva, nonce_correct, bool, {2}, FortunaSpec),
+    {_, GA3F_F} = ?call(call_contract, Acc, CAFortuna, nonce_correct, bool, {1}, FortunaSpec),
+
+    {_, GA3R_L} = ?call(call_contract, Acc, CARoma,    nonce_correct, bool, {4}, LimaSpec),
+    {_, GA3M_L} = ?call(call_contract, Acc, CAMinerva, nonce_correct, bool, {3}, LimaSpec),
+    {_, GA3F_L} = ?call(call_contract, Acc, CAFortuna, nonce_correct, bool, {2}, LimaSpec),
+    {_, GA3L_L} = ?call(call_contract, Acc, CALima,    nonce_correct, bool, {1}, LimaSpec),
+
+    ct:pal("Calling nonce_correct AEVM:\n"
+           "Roma    - Roma:    ~p\n" "Roma    - Minerva: ~p\n"
+           "Minerva - Minerva: ~p\n" "Roma    - Fortuna: ~p\n"
+           "Minerva - Fortuna: ~p\n" "Fortuna - Fortuna: ~p\n"
+           "Roma    - Lima:    ~p\n" "Minerva - Lima:    ~p\n"
+           "Fortuna - Lima:    ~p\n" "Lima    - Lima:    ~p\n",
+           [GA3R_R, GA3R_M, GA3M_M, GA3R_F, GA3M_F, GA3F_F, GA3R_L, GA3M_L, GA3F_L, GA3L_L]),
+
+    put('$abi_version', ?ABI_FATE_SOPHIA_1),
+    GA3LF = [ begin
+                  {_, Gas} = ?call(call_contract, Acc, CALimaF, nonce_correct, bool, {N}, LimaSpecFate),
+                  {N, Gas}
+              end || N <- lists:seq(1, 100) ],
+    ct:pal("Calling nonce_correc FATE:\n~s\n", [[io_lib:format("main(~p): ~p\n", [N, G]) || {N, G} <- [hd(GA3LF), lists:last(GA3LF)]]]),
+
+
+    ?assertEqual(1, 2),
+    ok.
+
+limit(F, Ct, Sp, G0) ->
+    case F(Ct, Sp#{gas => G0 - 1}) of
+        {error,{throw,{aevm_eval_error,out_of_gas,0}}} -> limit(F, Ct, Sp, G0 - 1);
+        {{error,<<"out_of_gas">>}, _} -> G0 - 1
+    end;
+limit(_, _, _, 100) -> error.
 
 sophia_vm_interaction(Cfg) ->
     state(aect_test_utils:new_state()),

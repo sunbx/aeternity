@@ -1,9 +1,16 @@
 contract GA =
-  record state = { secret : int }
+  record state = { nonce : int, checks : int }
 
-  entrypoint init() = { secret = 0 }
+  entrypoint init() = { nonce = 1, checks = 0 }
 
-  stateful entrypoint nonce_correct(s : int) : bool =
-    let ok = state.secret == s
-    put(state{secret = s + 1})
-    ok
+  stateful entrypoint nonce_correct(n : int) : bool =
+    if(state.nonce != n) abort("Incorrect nonce")
+    put(state{nonce = n + 1})
+    true
+
+  stateful entrypoint check_nonce(n : int) : bool =
+    put(state{checks = state.checks + 1})
+    state.nonce == n
+
+  entrypoint n_checks() : int =
+    state.checks
