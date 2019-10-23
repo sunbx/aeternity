@@ -322,10 +322,10 @@ compile(Vsn, File) ->
             compile_(Vsn, File);
         [#compilation_cache_entry{result = Result}] ->
             %% This should save 200ms - 2000ms per invocation
-            ct:log("Compilation cache HIT  :)"),
+            %% ct:log("Compilation cache HIT  :)"),
             Result;
         [] ->
-            ct:log("Compilation cache MISS :("),
+            %% ct:log("Compilation cache MISS :("),
             Result = compile_(Vsn, File),
             ets:insert_new(?COMPILE_TAB, #compilation_cache_entry{compilation_id = CompilationId, result = Result}),
             Result
@@ -406,10 +406,10 @@ encode_call_data(Vsn, Code, Fun, Args) ->
     case ets:lookup(?ENCODE_CALL_TAB, CallId) of
         [#encode_call_cache_entry{result = Result}] ->
             %% This should save 100ms - 300ms per invocation
-            ct:log("Encode call cache HIT  :)"),
+            %% ct:log("Encode call cache HIT  :)"),
             Result;
         [] ->
-            ct:log("Encode call cache MISS :("),
+            %% ct:log("Encode call cache MISS :("),
             Result = encode_call_data_(Vsn, Code, Fun, Args, Backend),
             ets:insert_new(?ENCODE_CALL_TAB, #encode_call_cache_entry{call_id = CallId, result = Result}),
             Result
@@ -455,10 +455,10 @@ decode_call_result(Code, Fun, Res, Value) ->
     case ets:lookup(?DECODE_CALL_TAB, DecodeCallId) of
         [#decode_call_cache_entry{result = Result}] ->
             %% This should save 10-30ms per invocation - this still saves time as some tests call this function >200 times mostly with the same args
-            ct:log("Decode call cache HIT  :)"),
+            %% ct:log("Decode call cache HIT  :)"),
             Result;
         [] ->
-            ct:log("Decode call cache MISS :("),
+            %% ct:log("Decode call cache MISS :("),
             Result = decode_call_result(backend(), Code, Fun, Res, Value),
             ets:insert_new(?DECODE_CALL_TAB, #decode_call_cache_entry{decode_call_id = DecodeCallId, result = Result}),
             Result
