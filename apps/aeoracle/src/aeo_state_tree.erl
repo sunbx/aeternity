@@ -246,6 +246,20 @@ int_prune(Height, Trees) ->
     {OTree1, ATree1} = int_prune(cache_safe_peek(Cache), Height, OTree, ATree),
     aec_trees:set_accounts(aec_trees:set_oracles(Trees, OTree1), ATree1).
 
+-ifdef(TEST).
+int_prune(none, _Height, OTree, ATree) ->
+    {OTree, ATree};
+int_prune({Height1, Id}, Height2, #oracle_tree{ cache = Cache } = OTree, ATree) when Height2 > Height1 ->
+    {{Height1, Id}, Cache1} = cache_pop(Cache),
+    {OTree1, ATree1} = delete(Id, Height1, OTree#oracle_tree{ cache = Cache1 }, ATree),
+    int_prune(cache_safe_peek(Cache1), Height2, OTree1, ATree1);
+int_prune({Height, Id}, Height, #oracle_tree{ cache = Cache } = OTree, ATree) ->
+    {{Height, Id}, Cache1} = cache_pop(Cache),
+    {OTree1, ATree1} = delete(Id, Height, OTree#oracle_tree{ cache = Cache1 }, ATree),
+    int_prune(cache_safe_peek(Cache1), Height, OTree1, ATree1);
+int_prune({Height1,_Id}, Height2, OTree, ATree) when Height2 < Height1 ->
+    {OTree, ATree}.
+-else.
 int_prune(none, _Height, OTree, ATree) ->
     {OTree, ATree};
 int_prune({Height, Id}, Height, #oracle_tree{ cache = Cache } = OTree, ATree) ->
@@ -254,6 +268,7 @@ int_prune({Height, Id}, Height, #oracle_tree{ cache = Cache } = OTree, ATree) ->
     int_prune(cache_safe_peek(Cache1), Height, OTree1, ATree1);
 int_prune({Height1,_Id}, Height2, OTree, ATree) when Height2 < Height1 ->
     {OTree, ATree}.
+-endif.
 
 delete({oracle, Id}, H, OTree, ATree) ->
     {OTree1, ATree1} =

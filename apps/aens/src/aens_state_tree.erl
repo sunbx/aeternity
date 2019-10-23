@@ -108,11 +108,27 @@ new_with_backend(RootHash, CacheRootHash) ->
     Cache = aeu_mtrees:new_with_backend(CacheRootHash, aec_db_backends:ns_cache_backend()),
     #ns_tree{mtree = MTree, cache = Cache}.
 
+-ifdef(TEST).
+prune(LastBlockHeight, Trees) ->
+    NTrees = #ns_tree{cache = Cache} = aec_trees:ns(Trees),
+    case cache_safe_peek(Cache) of
+        {PrevHeight, _, _} when PrevHeight < LastBlockHeight - 1 ->
+            {NTree, ExpiredActions} = int_prune(PrevHeight, NTrees),
+            Trees1 = aec_trees:set_ns(Trees, NTree),
+            prune(LastBlockHeight, run_elapsed(ExpiredActions, Trees1, PrevHeight + 1));
+        _ ->
+            %% Same as prune below!
+            {NTree, ExpiredActions} = int_prune(LastBlockHeight - 1, aec_trees:ns(Trees)),
+            Trees1 = aec_trees:set_ns(Trees, NTree),
+            run_elapsed(ExpiredActions, Trees1, LastBlockHeight)
+    end.
+-else.
 -spec prune(block_height(), aec_trees:trees()) -> aec_trees:trees().
 prune(NextBlockHeight, Trees) ->
     {NTree, ExpiredActions} = int_prune(NextBlockHeight - 1, aec_trees:ns(Trees)),
     Trees1 = aec_trees:set_ns(Trees, NTree),
     run_elapsed(ExpiredActions, Trees1, NextBlockHeight).
+-endif.
 
 -spec auction_iterator(tree()) -> aeu_mtrees:iterator().
 auction_iterator(#ns_tree{mtree = MTree}) ->
