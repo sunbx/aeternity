@@ -508,7 +508,8 @@ update(Cfg) ->
     0  = aens_names:client_ttl(N),
 
     %% Create Update tx and apply it on trees
-    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<1:256>>))],
+    Pointers = [aens_pointer:new(<<"account_pubkey">>, aeser_id:create(account, <<1:256>>)),
+                aens_pointer:new(<<"random_key">>, aeser_id:create(account, <<2:256>>))],
     NameTTL  = 40000,
     TxSpec = aens_test_utils:update_tx_spec(
                PubKey, NHash, #{pointers => Pointers, name_ttl => NameTTL}, S1),
