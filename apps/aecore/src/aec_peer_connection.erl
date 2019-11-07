@@ -1383,12 +1383,6 @@ validate_prev_key_block(_MicroHeader, not_found, _PrevKeyHeader) ->
 
 validate_micro_signature(MicroHeader, _PrevHeader, PrevKeyHeader)
   when PrevKeyHeader =/= not_found ->
-    Bin = aec_headers:serialize_to_signature_binary(MicroHeader),
-    Sig = aec_headers:signature(MicroHeader),
-    Signer = aec_headers:miner(PrevKeyHeader),
-    case enacl:sign_verify_detached(Sig, Bin, Signer) of
-        {ok, _}    -> ok;
-        {error, _} -> {error, signature_verification_failed}
-    end;
+    aeu_sig:verify(MicroHeader, aec_headers:miner(PrevKeyHeader));
 validate_micro_signature(_MicroHeader, _PrevHeader, not_found) ->
     {error, signer_not_found}.
