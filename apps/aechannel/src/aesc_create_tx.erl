@@ -141,13 +141,19 @@ check(#channel_create_tx{}, Trees,_Env) ->
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#channel_create_tx{} = Tx, Trees, Env) ->
-    {value, SignedTx} = aetx_env:signed_tx(Env),
-    {ok, ChannelPubkey} = aesc_utils:channel_pubkey(SignedTx),
+    %% {value, SignedTx} = aetx_env:signed_tx(Env),
+    InitiatorPK  = initiator_pubkey(Tx),
+    ResponderPK  = responder_pubkey(Tx),
+    InitNonce    = case aetx_env:ga_nonce(Env, InitiatorPK) of
+                       {value, NonceX} -> NonceX;
+                       none            -> nonce(Tx)
+                   end,
+    ChannelPK    = aesc_channels:pubkey(InitiatorPK, InitNonce, ResponderPK),
     Instructions =
         aeprimop:channel_create_tx_instructions(
-          initiator_pubkey(Tx),
+          InitiatorPK,
           initiator_amount(Tx),
-          responder_pubkey(Tx),
+          ResponderPK,
           responder_amount(Tx),
           channel_reserve(Tx),
           delegate_pubkeys(Tx),
@@ -156,7 +162,7 @@ process(#channel_create_tx{} = Tx, Trees, Env) ->
           fee(Tx),
           nonce(Tx),
           round(Tx),
-          ChannelPubkey),
+          ChannelPK),
     aeprimop:eval(Instructions, Trees, Env).
 
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
@@ -324,7 +330,7 @@ valid_at_protocol(_, _) ->
     true.
 
 %%%===================================================================
-%%% Test setters 
+%%% Test setters
 %%%===================================================================
 
 -ifdef(TEST).
