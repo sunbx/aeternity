@@ -1,0 +1,5 @@
+contract O =
+  stateful entrypoint transfer() =
+    let n = Contract.balance / 2
+    Chain.spend(Call.caller, n)
+    n

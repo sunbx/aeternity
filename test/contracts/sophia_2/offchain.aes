@@ -1,0 +1,5 @@
+contract O =
+  stateful function transfer() =
+    let n = Contract.balance / 2
+    Chain.spend(Call.caller, n)
+    n

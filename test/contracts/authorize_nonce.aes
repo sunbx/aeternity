@@ -8,9 +8,3 @@ contract GA =
     put(state{nonce = n + 1})
     true
 
-  stateful entrypoint check_nonce(n : int) : bool =
-    put(state{checks = state.checks + 1})
-    state.nonce == n
-
-  entrypoint n_checks() : int =
-    state.checks

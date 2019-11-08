@@ -8,10 +8,3 @@ contract GA =
     put(state{nonce = n + 1})
     true
 
-  stateful function check_nonce(n : int) : bool =
-    put(state{checks = state.checks + 1})
-    state.nonce == n
-
-  function n_checks() : int =
-    state.checks
-

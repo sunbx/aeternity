@@ -1,0 +1,11 @@
+contract SimpleState =
+  record state = { secret : int, checks : int }
+
+  entrypoint init(s : int) = { secret = s, checks = 0 }
+
+  stateful entrypoint check(n : int) : bool =
+    put(state{ checks = (state.checks + 1) mod 50 })
+    n == state.secret
+
+  entrypoint n_checks() : int =
+    state.checks

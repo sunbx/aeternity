@@ -1,0 +1,11 @@
+contract SimpleState =
+  record state = { secret : int, checks : int }
+
+  function init(s : int) = { secret = s, checks = 0 }
+
+  stateful function check(n : int) : bool =
+    put(state{ checks = (state.checks + 1) mod 50 })
+    n == state.secret
+
+  function n_checks() : int =
+    state.checks
