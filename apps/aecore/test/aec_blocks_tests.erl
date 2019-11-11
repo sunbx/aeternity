@@ -11,9 +11,6 @@
 -include_lib("aeminer/include/aeminer.hrl").
 -include("blocks.hrl").
 
--import(aec_blocks, [raw_micro_block/0
-                    ]).
-
 -define(TEST_MODULE, aec_blocks).
 -define(FAKE_TXS_TREE_HASH, <<42:?TXS_HASH_BYTES/unit:8>>).
 
@@ -24,7 +21,6 @@ validate_test_() ->
              meck:new(enacl, [passthrough]),
              meck:expect(enacl, sign_verify_detached, 3, {ok, <<>>}),
              meck:new(aec_chain, [passthrough]),
-             meck:expect(aec_chain, get_header, 1, error),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
@@ -97,5 +93,11 @@ validate_test_pass_validation() ->
               Txs),
 
     ?assertEqual(ok, ?TEST_MODULE:validate_micro_block(Block, aec_blocks:version(Block))).
+
+raw_micro_block() ->
+    PrevHeader = aec_headers:raw_key_header(),
+    meck:expect(aec_chain, get_header, 1, {ok, PrevHeader}),
+    RawBlock0 = ?TEST_MODULE:raw_micro_block(),
+    ?TEST_MODULE:set_time_in_msecs(RawBlock0, aec_headers:time_in_msecs(PrevHeader) + 1).
 
 -endif.

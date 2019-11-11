@@ -223,7 +223,6 @@ validate_test_() ->
              meck:new(aec_hard_forks, [passthrough]),
              meck:new(aec_mining, [passthrough]),
              meck:new(aec_chain, [passthrough]),
-             meck:expect(aec_chain, get_header, 1, error),
              meck:new(aeu_time, [passthrough])
      end,
      fun(_) ->
@@ -334,11 +333,15 @@ validate_test_() ->
               ?assertError(function_clause, ?TEST_MODULE:validate_key_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
-              Header = ?TEST_MODULE:set_version_and_height(
+              PrevHeader = raw_key_header(),
+              meck:expect(aec_chain, get_header, 1, {ok, PrevHeader}),
+              Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_micro_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
+              Header = ?TEST_MODULE:set_time_in_msecs(Header0, aec_headers:time_in_msecs(PrevHeader) + 1),
               ?assertEqual(ok, ?TEST_MODULE:validate_micro_block_header(Header, ?GENESIS_VERSION))
       end,
       fun() ->
+              meck:expect(aec_chain, get_header, 1, {ok, raw_key_header()}),
               Header0 = ?TEST_MODULE:set_version_and_height(
                            raw_micro_header(), ?GENESIS_VERSION, ?GENESIS_HEIGHT),
               Header = ?TEST_MODULE:set_time_in_msecs(Header0,

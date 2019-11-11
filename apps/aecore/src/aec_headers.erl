@@ -57,8 +57,9 @@
          validate_micro_block_header/2,
          validate_protocol/2,
          validate_pow/1,
-         validate_micro_block_cycle_time/1,
-         validate_max_time/1
+         validate_micro_block_cycle_time/2,
+         validate_max_time/1,
+         validate_micro_block_signature/2
         ]).
 
 -include_lib("aeminer/include/aeminer.hrl").
@@ -702,9 +703,10 @@ validate_key_block_header(Header, Protocol) ->
 validate_micro_block_header(Header, Protocol) ->
     %% NOTE: The signature is not validated since we don't know the leader key
     %%       This check is performed when adding the header to the chain.
+    {ok, PrevHeader} = aec_chain:get_header(aec_headers:prev_hash(Header)),
     Validators =
         [fun() -> validate_protocol(Header, Protocol) end,
-         fun() -> validate_micro_block_cycle_time(Header) end,
+         fun() -> validate_micro_block_cycle_time(Header, PrevHeader) end,
          fun() -> validate_max_time(Header) end],
     aeu_validation:run(Validators).
 
@@ -717,7 +719,7 @@ validate_protocol(Header, Protocol)
         false -> {error, protocol_version_mismatch}
     end.
 
--spec validate_pow(header()) -> ok | {error, incorrect_pow}.
+-spec validate_pow(key_header()) -> ok | {error, incorrect_pow}.
 validate_pow(#key_header{nonce = Nonce, pow_evidence = Evd, target = Target} = Header)
   when Nonce >= ?MIN_NONCE, Nonce =< ?MAX_NONCE ->
     %% Zero nonce and pow_evidence before hashing, as this is how the mined
@@ -729,24 +731,19 @@ validate_pow(#key_header{nonce = Nonce, pow_evidence = Evd, target = Target} = H
         false -> {error, incorrect_pow}
     end.
 
--spec validate_micro_block_cycle_time(header()) -> ok | {error, bad_micro_block_interval}.
-validate_micro_block_cycle_time(#mic_header{} = Header) ->
+-spec validate_micro_block_cycle_time(micro_header(), header()) ->
+                                             ok | {error, bad_micro_block_interval}.
+validate_micro_block_cycle_time(#mic_header{} = Header, PrevHeader) ->
     Time = time_in_msecs(Header),
-    PrevHash = prev_hash(Header),
-    case aec_chain:get_header(PrevHash) of
-        {ok, PrevHeader} ->
-            PrevTime = time_in_msecs(PrevHeader),
-            MinTime =
-                case aec_headers:type(PrevHeader) of
-                    micro -> PrevTime + aec_governance:micro_block_cycle();
-                    key   -> PrevTime + 1
-                end,
-            case Time >= MinTime of
-                true  -> ok;
-                false -> {error, bad_micro_block_interval}
-            end;
-        error ->
-            ok %% We don't know yet - checked later
+    PrevTime = time_in_msecs(PrevHeader),
+    MinTime =
+        case aec_headers:type(PrevHeader) of
+            micro -> PrevTime + aec_governance:micro_block_cycle();
+            key   -> PrevTime + 1
+        end,
+    case Time >= MinTime of
+        true  -> ok;
+        false -> {error, bad_micro_block_interval}
     end.
 
 -spec validate_max_time(header()) -> ok | {error, block_from_the_future}.
@@ -758,6 +755,11 @@ validate_max_time(Header)
         true  -> ok;
         false -> {error, block_from_the_future}
     end.
+
+-spec validate_micro_block_signature(micro_header(), aec_keys:pubkey()) ->
+                                            ok | {error, signature_verification_failed}.
+validate_micro_block_signature(#mic_header{} = Header, Signer) ->
+    aeu_sig:verify(Header, Signer).
 
 decode(Type, Enc) ->
     {ok, Val} = aeser_api_encoder:safe_decode(Type, Enc),

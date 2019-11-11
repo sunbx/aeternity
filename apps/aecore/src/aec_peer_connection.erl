@@ -1303,63 +1303,80 @@ get_micro_block_txs([TxHash | TxHashes], State, Acc) ->
 pre_assembly_check(MicroHeader) ->
     {ok, Hash} = aec_headers:hash_header(MicroHeader),
     case aec_db:has_block(Hash) of
-        true -> known;
+        true ->
+            known;
         false ->
-            {PrevHeader, PrevKeyHeader} = get_onchain_env(MicroHeader),
-            Validators = [fun validate_micro_block_header/3,
-                          fun validate_connected_to_chain/3,
-                          fun validate_delta_height/3,
-                          fun validate_prev_key_block/3,
-                          fun validate_micro_signature/3],
-            aeu_validation:run(Validators, [MicroHeader, PrevHeader, PrevKeyHeader])
+            OnChainEnv = get_onchain_env(MicroHeader),
+            validate_micro_block_header(MicroHeader, OnChainEnv)
     end.
 
 get_onchain_env(MicroHeader) ->
     PrevHeaderHash = aec_headers:prev_hash(MicroHeader),
     PrevKeyHash = aec_headers:prev_key_hash(MicroHeader),
-    case aec_chain:get_header(PrevHeaderHash) of
-        {ok, PrevHeader} ->
-            case aec_headers:type(PrevHeader) of
-                key ->
-                    {PrevHeader, PrevHeader};
-                micro ->
-                    case aec_chain:get_header(PrevKeyHash) of
-                        {ok, PrevKeyHeader} -> {PrevHeader, PrevKeyHeader};
-                        error               -> {PrevHeader, not_found}
-                    end
-            end;
-        error ->
-            {not_found, not_found}
-    end.
+    TopHeader = aec_chain:top_header(),
+    Res =
+        case aec_chain:get_header(PrevHeaderHash) of
+            {ok, PrevHeader} ->
+                case aec_headers:type(PrevHeader) of
+                    key ->
+                        #{prev_header     => PrevHeader,
+                          prev_key_header => PrevHeader};
+                    micro ->
+                        case aec_chain:get_header(PrevKeyHash) of
+                            {ok, PrevKeyHeader} ->
+                                #{prev_header     => PrevHeader,
+                                  prev_key_header => PrevKeyHeader};
+                            error ->
+                                #{prev_header     => PrevHeader,
+                                  prev_key_header => undefined}
+                        end
+                end;
+            error ->
+                #{prev_header     => undefined,
+                  prev_key_header => undefined}
+        end,
+    Res#{top_header => TopHeader}.
 
-validate_micro_block_header(MicroHeader, _PrevHeader, PrevKeyHeader)
-  when PrevKeyHeader =/= not_found ->
+validate_micro_block_header(MicroHeader,
+                            #{prev_header := PrevHeader,
+                              prev_key_header := PrevKeyHeader,
+                              top_header := TopHeader})
+  when PrevHeader =/= undefined, PrevKeyHeader =/= undefined ->
     Protocol = aec_headers:version(PrevKeyHeader),
-    aec_headers:validate_micro_block_header(MicroHeader, Protocol);
-validate_micro_block_header(_MicroHeader, _PrevHeader, not_found) ->
-    {error, prev_key_block_not_found}.
+    Signer = aec_headers:miner(PrevKeyHeader),
+    Validators =
+        [fun() -> validate_connected_to_chain(MicroHeader) end,
+         fun() -> validate_delta_height(MicroHeader, TopHeader) end,
+         fun() -> validate_prev_header(MicroHeader, PrevHeader) end,
+         fun() -> aec_headers:validate_protocol(MicroHeader, Protocol) end,
+         fun() -> aec_headers:validate_micro_block_cycle_time(MicroHeader, PrevHeader) end,
+         fun() -> aec_headers:validate_max_time(MicroHeader) end,
+         fun() -> aec_headers:validate_micro_block_signature(MicroHeader, Signer) end],
+    aeu_validation:run(Validators);
+validate_micro_block_header(_MicroHeader, _OnChainEnv) ->
+    {error, orphan_blocks_not_allowed}.
 
-validate_connected_to_chain(MicroHeader, _PrevHeader, _PrevKeyHeader) ->
+validate_connected_to_chain(MicroHeader) ->
     PrevHeaderHash = aec_headers:prev_hash(MicroHeader),
     case aec_chain_state:hash_is_connected_to_genesis(PrevHeaderHash) of
         true  -> ok;
         false -> {error, orphan_blocks_not_allowed}
     end.
 
-validate_delta_height(MicroHeader, _PrevHeader, _PrevKeyHeader) ->
+validate_delta_height(MicroHeader, TopHeader) ->
     Height = aec_headers:height(MicroHeader),
-    case aec_chain:top_header() of
-        undefined -> ok;
-        TopHeader ->
+    case TopHeader of
+        Header when Header =/= undefined ->
             MaxDelta = aec_chain_state:gossip_allowed_height_from_top(),
-            case Height >= aec_headers:height(TopHeader) - MaxDelta of
+            case Height >= aec_headers:height(Header) - MaxDelta of
                 true  -> ok;
                 false -> {error, too_far_below_top}
-            end
+            end;
+        undefined ->
+            ok
     end.
 
-validate_prev_key_block(MicroHeader, PrevHeader, _PrevKeyHeader)
-  when PrevHeader =/= not_found ->
+validate_prev_header(MicroHeader, PrevHeader) ->
     case aec_headers:height(PrevHeader) =:= aec_headers:height(MicroHeader) of
         false -> {error, wrong_prev_key_block_height};
         true ->
@@ -1377,12 +1394,4 @@ validate_prev_key_block(MicroHeader, PrevHeader, _PrevKeyHeader)
                         false -> {error, wrong_prev_key_hash}
                     end
             end
-    end;
-validate_prev_key_block(_MicroHeader, not_found, _PrevKeyHeader) ->
-    {error, orphan_blocks_not_allowed}.
-
-validate_micro_signature(MicroHeader, _PrevHeader, PrevKeyHeader)
-  when PrevKeyHeader =/= not_found ->
-    aeu_sig:verify(MicroHeader, aec_headers:miner(PrevKeyHeader));
-validate_micro_signature(_MicroHeader, _PrevHeader, not_found) ->
-    {error, signer_not_found}.
+    end.
