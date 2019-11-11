@@ -951,14 +951,7 @@ send_send_block(S = #{ status := {connected, _ESock} }, {Type, SerBlock}) ->
 handle_new_key_block(S, Msg) ->
     try
         {ok, KeyBlock} = deserialize_key_block(maps:get(key_block, Msg)),
-        Header = aec_blocks:to_header(KeyBlock),
-        case check_gossiped_header_height(S, Header) of
-            drop -> ok;
-            ok ->
-                {ok, HH} = aec_headers:hash_header(Header),
-                epoch_sync:debug("Got new block: ~s", [pp(HH)]),
-                aec_conductor:post_block(KeyBlock)
-        end
+        handle_key_block(S, KeyBlock)
     catch _:_ ->
         ok
     end,
@@ -969,50 +962,46 @@ handle_new_micro_block(S, Msg) ->
         case maps:get(light, Msg, false) of
             false ->
                 {ok, MicroBlock} = deserialize_micro_block(maps:get(micro_block, Msg)),
-                Header = aec_blocks:to_header(MicroBlock),
-                case check_gossiped_header_height(S, Header) of
-                    drop -> ok;
-                    ok ->
-                        {ok, HH} = aec_headers:hash_header(Header),
-                        epoch_sync:debug("Got new block: ~s", [pp(HH)]),
-                        %% in the full micro block case - conductor will do the necessary checks
-                        aec_conductor:post_block(MicroBlock)
-                end;
+                handle_micro_block(S, MicroBlock);
             true ->
                 {ok, #{ header := Header, tx_hashes := TxHashes, pof := PoF }} =
                     deserialize_light_micro_block(maps:get(micro_block, Msg)),
-                case check_gossiped_header_height(S, Header) of
-                    drop -> ok;
-                    ok   -> handle_light_micro_block(S, Header, TxHashes, PoF)
-                end
+                handle_light_micro_block(S, Header, TxHashes, PoF)
         end
     catch _:_ ->
         ok
     end,
     S.
 
-check_gossiped_header_height(S, Header) ->
-    case aec_headers:height(Header) - 1 =< maps:get(sync_height, S, infinity) of
-        true  -> ok;
-        false -> drop
+handle_key_block(S, Block) ->
+    Header = aec_blocks:to_header(Block),
+    case validate_key_block_header(S, Header) of
+        ok ->
+            {ok, HH} = aec_headers:hash_header(Header),
+            epoch_sync:debug("Got new block: ~s", [pp(HH)]),
+            aec_conductor:post_block(Block);
+        {error, already_present} ->
+            ok;
+        Err = {error, _} ->
+            Err
     end.
 
-handle_light_micro_block(_S, Header, TxHashes, PoF) ->
-    %% Before assembling the block, check if it is known, and valid
-    case pre_assembly_check(Header) of
-        known ->
-            ok;
-        E = {error, _} ->
+handle_micro_block(S, Block) ->
+    Header = aec_blocks:to_header(Block),
+    case validate_micro_block_header(S, Header, get_onchain_env(Header)) of
+        ok ->
             {ok, HH} = aec_headers:hash_header(Header),
-            epoch_sync:info("Dropping gossiped light micro_block (~s): ~p", [pp(HH), E]),
-            case aec_chain:get_header(aec_headers:prev_key_hash(Header)) of
-                {ok, PrevHeader} ->
-                    epoch_sync:debug("miner beneficiary: ~p", [aec_headers:beneficiary(PrevHeader)]),
-                    ok;
-                _ ->
-                    ok
-            end;
+            epoch_sync:debug("Got new block: ~s", [pp(HH)]),
+            aec_conductor:post_block(Block);
+        {error, already_present} ->
+            ok;
+        Err = {error, _} ->
+            Err
+    end.
 
+handle_light_micro_block(S, Header, TxHashes, PoF) ->
+    %% Before assembling the block, check if it is known, and valid
+    case validate_micro_block_header(S, Header, get_onchain_env(Header)) of
         ok ->
             case get_micro_block_txs(TxHashes) of
                 {all, Txs} ->
@@ -1027,6 +1016,18 @@ handle_light_micro_block(_S, Header, TxHashes, PoF) ->
                                                          tx_data => TxsAndTxHashes,
                                                          pof => PoF
                                                        }}),
+                    ok
+            end;
+        {error, already_present} ->
+            ok;
+        E = {error, _} ->
+            {ok, HH} = aec_headers:hash_header(Header),
+            epoch_sync:info("Dropping gossiped light micro_block (~s): ~p", [pp(HH), E]),
+            case aec_chain:get_header(aec_headers:prev_key_hash(Header)) of
+                {ok, PrevHeader} ->
+                    epoch_sync:debug("miner beneficiary: ~p", [aec_headers:beneficiary(PrevHeader)]),
+                    ok;
+                _ ->
                     ok
             end
     end.
@@ -1092,6 +1093,7 @@ handle_get_block_txs_rsp(State, {ok, _Vsn, Msg}) ->
                 {ok, AllTxs} ->
                     MB = aec_blocks:new_micro_from_header(Header, AllTxs, PoF),
                     epoch_sync:info("Assembled new block: ~s", [pp(Hash)]),
+                    %% Micro block header is already validated.
                     aec_conductor:post_block(MB);
                 error ->
                     epoch_sync:info("Failed to assemble micro block ~s", [pp(Hash)])
@@ -1300,16 +1302,6 @@ get_micro_block_txs([TxHash | TxHashes], State, Acc) ->
         {value, STx} -> get_micro_block_txs(TxHashes, State, [STx | Acc])
     end.
 
-pre_assembly_check(MicroHeader) ->
-    {ok, Hash} = aec_headers:hash_header(MicroHeader),
-    case aec_db:has_block(Hash) of
-        true ->
-            known;
-        false ->
-            OnChainEnv = get_onchain_env(MicroHeader),
-            validate_micro_block_header(MicroHeader, OnChainEnv)
-    end.
-
 get_onchain_env(MicroHeader) ->
     PrevHeaderHash = aec_headers:prev_hash(MicroHeader),
     PrevKeyHash = aec_headers:prev_key_hash(MicroHeader),
@@ -1337,24 +1329,50 @@ get_onchain_env(MicroHeader) ->
         end,
     Res#{top_header => TopHeader}.
 
-validate_micro_block_header(MicroHeader,
-                            #{prev_header := PrevHeader,
-                              prev_key_header := PrevKeyHeader,
-                              top_header := TopHeader})
+validate_key_block_header(S, Header) ->
+    SyncHeight = maps:get(sync_height, S, infinity),
+    Validators =
+        [fun() -> validate_gossiped_header_height(Header, SyncHeight) end,
+         fun() -> validate_block_presence(Header) end,
+         fun() -> aec_headers:validate_pow(Header) end,
+         fun() -> aec_headers:validate_max_time(Header) end],
+    aeu_validation:run(Validators).
+
+validate_micro_block_header(S, Header, #{prev_header := PrevHeader,
+                                         prev_key_header := PrevKeyHeader,
+                                         top_header := TopHeader})
   when PrevHeader =/= undefined, PrevKeyHeader =/= undefined ->
+    SyncHeight = maps:get(sync_height, S, infinity),
     Protocol = aec_headers:version(PrevKeyHeader),
     Signer = aec_headers:miner(PrevKeyHeader),
     Validators =
-        [fun() -> validate_connected_to_chain(MicroHeader) end,
-         fun() -> validate_delta_height(MicroHeader, TopHeader) end,
-         fun() -> validate_prev_header(MicroHeader, PrevHeader) end,
-         fun() -> aec_headers:validate_protocol(MicroHeader, Protocol) end,
-         fun() -> aec_headers:validate_micro_block_cycle_time(MicroHeader, PrevHeader) end,
-         fun() -> aec_headers:validate_max_time(MicroHeader) end,
-         fun() -> aec_headers:validate_micro_block_signature(MicroHeader, Signer) end],
+        [fun() -> validate_gossiped_header_height(Header, SyncHeight) end,
+         fun() -> validate_block_presence(Header) end,
+         fun() -> validate_connected_to_chain(Header) end,
+         fun() -> validate_delta_height(Header, TopHeader) end,
+         fun() -> validate_prev_header(Header, PrevHeader) end,
+         fun() -> aec_headers:validate_protocol(Header, Protocol) end,
+         fun() -> aec_headers:validate_micro_block_cycle_time(Header, PrevHeader) end,
+         fun() -> aec_headers:validate_max_time(Header) end,
+         fun() -> aec_headers:validate_micro_block_signature(Header, Signer) end],
     aeu_validation:run(Validators);
-validate_micro_block_header(_MicroHeader, _OnChainEnv) ->
+validate_micro_block_header(_S, _MicroHeader, _OnChainEnv) ->
     {error, orphan_blocks_not_allowed}.
+
+validate_gossiped_header_height(Header, Height) when is_integer(Height) ->
+    case aec_headers:height(Header) - 1 =< Height of
+        true  -> ok;
+        false -> drop
+    end;
+validate_gossiped_header_height(_Header, infinity) ->
+    ok.
+
+validate_block_presence(Header) ->
+    {ok, Hash} = aec_headers:hash_header(Header),
+    case aec_db:has_block(Hash) of
+        false -> ok;
+        true  -> {error, already_present}
+    end.
 
 validate_connected_to_chain(MicroHeader) ->
     PrevHeaderHash = aec_headers:prev_hash(MicroHeader),
