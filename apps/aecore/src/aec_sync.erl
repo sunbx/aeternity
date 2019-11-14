@@ -911,7 +911,7 @@ do_fetch_generation(PeerId, Hash) ->
     end.
 
 do_fetch_generation_ext(Hash, PeerId) ->
-    epoch_sync:debug("we don't have the block -fetching (~p)", [pp(Hash)]),
+    epoch_sync:debug("we don't have the block - fetching (~p)", [pp(Hash)]),
     case aec_peer_connection:get_generation(PeerId, Hash, backward) of
         {ok, KeyBlock, MicroBlocks, backward} ->
             %% Types of blocks (key vs. macro) guaranteed by deserialization.
