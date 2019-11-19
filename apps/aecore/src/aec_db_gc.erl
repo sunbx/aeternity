@@ -168,7 +168,7 @@ swap_nodes(Hashes) ->
     {ClearTime, {atomic, ok}} = ?TIMED(mnesia:clear_table(aec_account_state)),
     ?LOG("GC clearing accounts table took ~p seconds", [ClearTime / 1000000]),
     ?LOG("GC writing ~p reachable account state nodes...", [NodesCount]),
-    {WriteTime, {atomic, ok}} = ?TIMED(mnesia:sync_transaction(fun () -> write_nodes(Hashes) end)),
+    {WriteTime, ok} = ?TIMED(aec_db:ensure_transaction(fun () -> write_nodes(Hashes) end)),
     ?LOG("GC writing reachable account state nodes took ~p seconds", [WriteTime / 1000000]),
     {ok, NodesCount}.
 
