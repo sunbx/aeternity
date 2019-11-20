@@ -141,8 +141,9 @@ is_leader() ->
 %%%===================================================================
 %%% Chain API
 
--spec post_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
-post_block(Block) ->
+-spec post_block(aec_valid_block:block()) -> 'ok' | {'error', any()}.
+post_block(VBlock) ->
+    Block = aec_valid_block:block(VBlock),
     Height = aec_blocks:height(Block),
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
     case aec_validation:validate_block(Block, Protocol) of
@@ -156,8 +157,9 @@ post_block(Block) ->
             {error, Reason}
     end.
 
--spec add_synced_block(aec_blocks:block()) -> 'ok' | {'error', any()}.
-add_synced_block(Block) ->
+-spec add_synced_block(aec_valid_block:block()) -> 'ok' | {'error', any()}.
+add_synced_block(VBlock) ->
+    Block = aec_valid_block:block(VBlock),
     Height = aec_blocks:height(Block),
     Protocol = aec_hard_forks:protocol_effective_at_height(Height),
     case aec_validation:validate_block(Block, Protocol) of

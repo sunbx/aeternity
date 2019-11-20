@@ -56,7 +56,8 @@ handle_request_('PostKeyBlock', #{'KeyBlock' := Data}, _Context) ->
     case aec_headers:deserialize_from_client(key, Data) of
         {ok, Header} ->
             KeyBlock = aec_blocks:new_key_from_header(Header),
-            case aec_conductor:post_block(KeyBlock) of
+            VKeyBlock = aec_valid_block:new(KeyBlock, http),
+            case aec_conductor:post_block(VKeyBlock) of
                 ok ->
                     {200, [], #{}};
                 {error, _Rsn} ->

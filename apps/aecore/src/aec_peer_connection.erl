@@ -872,7 +872,7 @@ handle_get_generation_rsp(S, {get_generation, From, _TRef}, Msg) ->
             {ok, KeyBlock} ->
                 case deserialize_micro_blocks(SerMicroBlocks, []) of
                     {ok, MicroBlocks} ->
-                        {ok, KeyBlock, MicroBlocks, Dir};
+                        handle_generation(S, KeyBlock, MicroBlocks, Dir);
                     Err = {error, _} ->
                         Err
                 end;
@@ -951,7 +951,7 @@ send_send_block(S = #{ status := {connected, _ESock} }, {Type, SerBlock}) ->
 handle_new_key_block(S, Msg) ->
     try
         {ok, KeyBlock} = deserialize_key_block(maps:get(key_block, Msg)),
-        handle_key_block(S, KeyBlock)
+        handle_key_block(S, KeyBlock, gossip)
     catch _:_ ->
         ok
     end,
@@ -962,7 +962,7 @@ handle_new_micro_block(S, Msg) ->
         case maps:get(light, Msg, false) of
             false ->
                 {ok, MicroBlock} = deserialize_micro_block(maps:get(micro_block, Msg)),
-                handle_micro_block(S, MicroBlock);
+                handle_micro_block(S, MicroBlock, gossip);
             true ->
                 {ok, #{ header := Header, tx_hashes := TxHashes, pof := PoF }} =
                     deserialize_light_micro_block(maps:get(micro_block, Msg)),
@@ -973,26 +973,65 @@ handle_new_micro_block(S, Msg) ->
     end,
     S.
 
-handle_key_block(S, Block) ->
-    Header = aec_blocks:to_header(Block),
-    case validate_key_block_header(S, Header) of
-        ok ->
-            {ok, HH} = aec_headers:hash_header(Header),
-            epoch_sync:debug("Got new block: ~s", [pp(HH)]),
-            aec_conductor:post_block(Block);
-        {error, already_present} ->
-            ok;
+handle_generation(_S, KeyBlock, MicroBlocks, forward) ->
+    KeyHeader = aec_blocks:to_header(KeyBlock),
+    Env = #{prev_header     => KeyHeader,
+            prev_key_header => KeyHeader},
+    case handle_micro_blocks(MicroBlocks, Env, sync, []) of
+        {ok, VMicroBlocks} ->
+            %% No need to validated key block, it won't be added by the
+            %% conductor.
+            VKeyBlock = new_valid_block(KeyBlock, sync),
+            {ok, VKeyBlock, VMicroBlocks, forward};
+        Err = {error, _} ->
+            Err
+    end;
+handle_generation(_S, KeyBlock, MicroBlocks, backward) ->
+    case handle_micro_blocks(MicroBlocks, #{}, sync, []) of
+         {ok, VMicroBlocks} ->
+            Env = case last_micro_block_header(MicroBlocks) of
+                      MicroHeader when MicroHeader =/= undefined ->
+                          #{prev_header => MicroHeader};
+                      undefined ->
+                          #{}
+                  end,
+            VKeyBlock = new_valid_block(KeyBlock, sync),
+            case check_block(VKeyBlock, Env, #{missing_env => defer_check}) of
+                {ok, VKeyBlock2} -> {ok, VKeyBlock2, VMicroBlocks, backward};
+                Err = {error, _} -> Err
+            end;
         Err = {error, _} ->
             Err
     end.
 
-handle_micro_block(S, Block) ->
+handle_micro_blocks([Block | Rest], Env, Origin, Acc) ->
+    VBlock = new_valid_block(Block, Origin),
+    case check_block(VBlock, Env, #{missing_env => defer_check}) of
+        {ok, VBlock2} ->
+            Env2 = Env#{prev_header => aec_blocks:to_header(Block)},
+            handle_micro_blocks(Rest, Env2, Origin, [VBlock2 | Acc]);
+        Err = {error, _} ->
+            Err
+    end;
+handle_micro_blocks([], _Env, _Origin, Acc) ->
+    {ok, lists:reverse(Acc)}.
+
+handle_key_block(S, Block, Origin) ->
+    handle_block(S, Block, Origin).
+
+handle_micro_block(S, Block, Origin) ->
+    handle_block(S, Block, Origin).
+
+handle_block(S, Block, gossip = Origin) ->
+    SyncHeight = maps:get(sync_height, S, infinity),
     Header = aec_blocks:to_header(Block),
-    case validate_micro_block_header(S, Header, get_onchain_env(Header)) of
-        ok ->
+    VBlock = new_valid_block(Block, Origin),
+    Env = maps:put(sync_height, SyncHeight, get_onchain_env(Header)),
+    case check_block(VBlock, Env, #{missing_env => {error, orphan_block}}) of
+        {ok, VBlock2} ->
             {ok, HH} = aec_headers:hash_header(Header),
             epoch_sync:debug("Got new block: ~s", [pp(HH)]),
-            aec_conductor:post_block(Block);
+            aec_conductor:post_block(VBlock2);
         {error, already_present} ->
             ok;
         Err = {error, _} ->
@@ -1001,20 +1040,27 @@ handle_micro_block(S, Block) ->
 
 handle_light_micro_block(S, Header, TxHashes, PoF) ->
     %% Before assembling the block, check if it is known, and valid
-    case validate_micro_block_header(S, Header, get_onchain_env(Header)) of
-        ok ->
+    SyncHeight = maps:get(sync_height, S, infinity),
+    Block = aec_blocks:new_micro_from_header(Header, [], PoF),
+    VBlock = new_valid_block(Block, gossip),
+    Env = maps:put(sync_height, SyncHeight, get_onchain_env(Header)),
+    case check_block(VBlock, Env, #{missing_env => {error, orphan_block}}) of
+        {ok, VBlock2} ->
             case get_micro_block_txs(TxHashes) of
                 {all, Txs} ->
-                    MicroBlock = aec_blocks:new_micro_from_header(Header, Txs, PoF),
+                    %% TODO: check Txs is not empty list
                     {ok, HH} = aec_headers:hash_header(Header),
                     epoch_sync:debug("Got new block: ~s", [pp(HH)]),
-                    aec_conductor:post_block(MicroBlock);
+                    VBlock3 = aec_valid_block:set_txs(Txs, VBlock2),
+                    case check_block(VBlock3, #{}) of
+                        {ok, VBlock4}    -> aec_conductor:post_block(VBlock4);
+                        Err = {error, _} -> Err
+                    end;
                 {some, TxsAndTxHashes} ->
                     epoch_sync:info("Missing txs: ~p",
                                     [[ TH || TH <- TxsAndTxHashes, is_binary(TH) ]]),
-                    cast(self(), {expand_micro_block, #{ header => Header,
-                                                         tx_data => TxsAndTxHashes,
-                                                         pof => PoF
+                    cast(self(), {expand_micro_block, #{ valid_block => VBlock2,
+                                                         tx_data => TxsAndTxHashes
                                                        }}),
                     ok
             end;
@@ -1032,10 +1078,53 @@ handle_light_micro_block(S, Header, TxHashes, PoF) ->
             end
     end.
 
+last_micro_block_header([])   -> undefined;
+last_micro_block_header([MB]) -> aec_blocks:to_micro_header(MB);
+last_micro_block_header(MBs)  -> aec_blocks:to_micro_header(lists:last(MBs)).
+
+get_onchain_env(Header) ->
+    PrevHeaderHash = aec_headers:prev_hash(Header),
+    PrevKeyHash = aec_headers:prev_key_hash(Header),
+    TopHeader = aec_chain:top_header(),
+    case aec_chain:get_header(PrevHeaderHash) of
+        {ok, PrevHeader} ->
+            case aec_headers:type(PrevHeader) of
+                key ->
+                    #{prev_header     => PrevHeader,
+                      prev_key_header => PrevHeader,
+                      top_header      => TopHeader};
+                micro ->
+                    case aec_chain:get_header(PrevKeyHash) of
+                        {ok, PrevKeyHeader} ->
+                            #{prev_header     => PrevHeader,
+                              prev_key_header => PrevKeyHeader,
+                              top_header      => TopHeader};
+                        error ->
+                            #{prev_header => PrevHeader,
+                              top_header  => TopHeader}
+                    end
+            end;
+        error ->
+            #{top_header => TopHeader}
+    end.
+
+new_valid_block(Block, Origin) ->
+   aec_valid_block:new(Block, Origin).
+
+check_block(VBlock, Env) ->
+    check_block(VBlock, Env, #{}).
+
+check_block(VBlock, Env, Opts) ->
+    aec_valid_block:check(VBlock, Env, check_opts(Opts)).
+
+check_opts(Opts) ->
+    Opts#{process => ?MODULE}.
+
 %% -- Get block txs ----------------------------------------------------------
 
-expand_micro_block(State, #{ header := Header,
+expand_micro_block(State, #{ valid_block := VBlock,
                              tx_data := TxsAndTxHashes } = MicroBlockFragment) ->
+    Header = aec_blocks:to_header(aec_valid_block:block(VBlock)),
     {ok, Hash} = aec_headers:hash_header(Header),
     case get_request(State, {expand, Hash}) of
         none ->
@@ -1088,13 +1177,16 @@ handle_get_block_txs_rsp(State, {ok, _Vsn, Msg}) ->
             State;
         {{expand, Hash}, MicroBlockFragment, _TRef} ->
             Txs = [ aetx_sign:deserialize_from_binary(STx) || STx <- maps:get(txs, Msg) ],
-            #{ header := Header, tx_data := TxsAndTxHashes, pof := PoF } = MicroBlockFragment,
+            #{ valid_block := VBlock, tx_data := TxsAndTxHashes } = MicroBlockFragment,
             case fill_txs(TxsAndTxHashes, Txs) of
                 {ok, AllTxs} ->
-                    MB = aec_blocks:new_micro_from_header(Header, AllTxs, PoF),
                     epoch_sync:info("Assembled new block: ~s", [pp(Hash)]),
-                    %% Micro block header is already validated.
-                    aec_conductor:post_block(MB);
+                    %% Micro block header is already valid.
+                    VBlock2 = aec_valid_block:set_txs(AllTxs, VBlock),
+                    case check_block(VBlock2, #{}) of
+                        {ok, VBlock3}        -> aec_conductor:post_block(VBlock3);
+                         Err = {error, _Rsn} -> Err
+                    end;
                 error ->
                     epoch_sync:info("Failed to assemble micro block ~s", [pp(Hash)])
             end
@@ -1300,116 +1392,4 @@ get_micro_block_txs([TxHash | TxHashes], State, Acc) ->
     case aec_db:find_signed_tx(TxHash) of
         none         -> get_micro_block_txs(TxHashes, some, [TxHash | Acc]);
         {value, STx} -> get_micro_block_txs(TxHashes, State, [STx | Acc])
-    end.
-
-get_onchain_env(MicroHeader) ->
-    PrevHeaderHash = aec_headers:prev_hash(MicroHeader),
-    PrevKeyHash = aec_headers:prev_key_hash(MicroHeader),
-    TopHeader = aec_chain:top_header(),
-    Res =
-        case aec_chain:get_header(PrevHeaderHash) of
-            {ok, PrevHeader} ->
-                case aec_headers:type(PrevHeader) of
-                    key ->
-                        #{prev_header     => PrevHeader,
-                          prev_key_header => PrevHeader};
-                    micro ->
-                        case aec_chain:get_header(PrevKeyHash) of
-                            {ok, PrevKeyHeader} ->
-                                #{prev_header     => PrevHeader,
-                                  prev_key_header => PrevKeyHeader};
-                            error ->
-                                #{prev_header     => PrevHeader,
-                                  prev_key_header => undefined}
-                        end
-                end;
-            error ->
-                #{prev_header     => undefined,
-                  prev_key_header => undefined}
-        end,
-    Res#{top_header => TopHeader}.
-
-validate_key_block_header(S, Header) ->
-    SyncHeight = maps:get(sync_height, S, infinity),
-    Validators =
-        [fun() -> validate_gossiped_header_height(Header, SyncHeight) end,
-         fun() -> validate_block_presence(Header) end,
-         fun() -> aec_headers:validate_pow(Header) end,
-         fun() -> aec_headers:validate_max_time(Header) end],
-    aeu_validation:run(Validators).
-
-validate_micro_block_header(S, Header, #{prev_header := PrevHeader,
-                                         prev_key_header := PrevKeyHeader,
-                                         top_header := TopHeader})
-  when PrevHeader =/= undefined, PrevKeyHeader =/= undefined ->
-    SyncHeight = maps:get(sync_height, S, infinity),
-    Protocol = aec_headers:version(PrevKeyHeader),
-    Signer = aec_headers:miner(PrevKeyHeader),
-    Validators =
-        [fun() -> validate_gossiped_header_height(Header, SyncHeight) end,
-         fun() -> validate_block_presence(Header) end,
-         fun() -> validate_connected_to_chain(Header) end,
-         fun() -> validate_delta_height(Header, TopHeader) end,
-         fun() -> validate_prev_header(Header, PrevHeader) end,
-         fun() -> aec_headers:validate_protocol(Header, Protocol) end,
-         fun() -> aec_headers:validate_micro_block_cycle_time(Header, PrevHeader) end,
-         fun() -> aec_headers:validate_max_time(Header) end,
-         fun() -> aec_headers:validate_micro_block_signature(Header, Signer) end],
-    aeu_validation:run(Validators);
-validate_micro_block_header(_S, _MicroHeader, _OnChainEnv) ->
-    {error, orphan_blocks_not_allowed}.
-
-validate_gossiped_header_height(Header, Height) when is_integer(Height) ->
-    case aec_headers:height(Header) - 1 =< Height of
-        true  -> ok;
-        false -> drop
-    end;
-validate_gossiped_header_height(_Header, infinity) ->
-    ok.
-
-validate_block_presence(Header) ->
-    {ok, Hash} = aec_headers:hash_header(Header),
-    case aec_db:has_block(Hash) of
-        false -> ok;
-        true  -> {error, already_present}
-    end.
-
-validate_connected_to_chain(MicroHeader) ->
-    PrevHeaderHash = aec_headers:prev_hash(MicroHeader),
-    case aec_chain_state:hash_is_connected_to_genesis(PrevHeaderHash) of
-        true  -> ok;
-        false -> {error, orphan_blocks_not_allowed}
-    end.
-
-validate_delta_height(MicroHeader, TopHeader) ->
-    Height = aec_headers:height(MicroHeader),
-    case TopHeader of
-        Header when Header =/= undefined ->
-            MaxDelta = aec_chain_state:gossip_allowed_height_from_top(),
-            case Height >= aec_headers:height(Header) - MaxDelta of
-                true  -> ok;
-                false -> {error, too_far_below_top}
-            end;
-        undefined ->
-            ok
-    end.
-
-validate_prev_header(MicroHeader, PrevHeader) ->
-    case aec_headers:height(PrevHeader) =:= aec_headers:height(MicroHeader) of
-        false -> {error, wrong_prev_key_block_height};
-        true ->
-            case aec_headers:type(PrevHeader) of
-                key ->
-                    case aec_headers:prev_key_hash(MicroHeader) =:=
-                        aec_headers:prev_hash(MicroHeader) of
-                        true -> ok;
-                        false -> {error, wrong_prev_key_hash}
-                    end;
-                micro ->
-                    case aec_headers:prev_key_hash(MicroHeader) =:=
-                        aec_headers:prev_key_hash(PrevHeader) of
-                        true -> ok;
-                        false -> {error, wrong_prev_key_hash}
-                    end
-            end
     end.

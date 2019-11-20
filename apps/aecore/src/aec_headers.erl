@@ -348,7 +348,7 @@ set_root_hash(#key_header{} = H, Hash) -> H#key_header{root_hash = Hash};
 set_root_hash(#mic_header{} = H, Hash) -> H#mic_header{root_hash = Hash}.
 
 -spec set_nonce_and_pow(key_header(), aeminer_pow:nonce(),
-                        aeminer_pow_cuckoo:solution()) -> key_header().
+                        aeminer_pow_cuckoo:solution() | no_value) -> key_header().
 set_nonce_and_pow(#key_header{} = H, Nonce, Evd) ->
     H#key_header{nonce = Nonce, pow_evidence = Evd}.
 
