@@ -23,19 +23,32 @@
          max_time/1,
          prev_header/2,
          protocol/2,
-         chain_connection/1
+         chain_connection/1,
+         pof/2,
+         cycle_time/2,
+         delta_height/2,
+         max_time/1,
+         signature/2,
+         txs_hash/2,
+         gas_limit/2,
+         txs_fee/2
         ]).
 
+-export_type([block/0]).
 
 -include_lib("aeminer/include/aeminer.hrl").
+
+-define(PEER_CONN, aec_peer_connection).
+-define(SYNC, aec_sync).
+-define(CONDUCTOR, aec_conductor).
 
 -define(KEY_HEADER_SYNC_CHECKS,
         [{block_presence,   [header]},
          {pow,              [header]},
          {max_time,         [header]},
          {prev_header,      [header, prev_header]},
-         {protocol,         [header, protocol]},
-         {chain_connection, [header], #{process => sync}}
+         {protocol,         [header, protocol],     #{process => ?SYNC}},
+         {chain_connection, [header],               #{process => ?SYNC}}
         ]).
 
 -define(KEY_HEADER_GOSSIP_CHECKS,
@@ -58,7 +71,10 @@
          {cycle_time,       [header, prev_header]},
          {signature,        [header, prev_key_header]},
          {pof,              [header, pof]},
-         {chain_connection, [header], #{process => sync}}
+         {txs_hash,         [header, txs]},
+         {gas_limit,        [header, txs]},
+         {txs_fee,          [header, txs]},
+         {chain_connection, [header],                   #{process => ?SYNC}}
         ]).
 
 -define(KEY_HEADER_HTTP_CHECKS, []).
@@ -100,8 +116,6 @@
         }).
 
 -opaque block() :: #valid_block{}.
-
--export_type([block/0]).
 
 %% API
 
@@ -200,32 +214,22 @@ perform_check({Fun, EnvKeys, RequiredOpts}, Env, Opts) ->
 perform_check({Fun, EnvKeys}, Env, Opts) ->
     perform_check(Fun, EnvKeys, Env, Opts).
 
-perform_check(Fun, EnvKeys, Env, Opts) ->
+perform_check(Fun, EnvKeys, Env, _Opts) ->
     case get_required_args(EnvKeys, Env, []) of
-        {ok, Args} ->
-            apply(?MODULE, Fun, Args);
-        {missing, txs} ->
-            skip;
-        {missing, _EnvKey} ->
-            case maps:get(missing_env, Opts, defer_check) of
-                defer_check ->
-                    skip;
-                {error, _Rsn} = Err ->
-                    Err
-            end
+        {ok, Args}          -> apply(?MODULE, Fun, Args);
+        defer_check         -> skip;
+        {error, _Rsn} = Err -> Err
     end.
 
 has_matching_entries(M1, M2) ->
     M1 =:= maps:with(maps:keys(M1), M2).
 
 get_required_args([Key | Rest], Env, Acc) ->
-    case maps:get(Key, Env, undefined) of
-        [] when Key =:= txs ->
-            {missing, txs};
-        Val when Val =/= undefined ->
-            get_required_args(Rest, Env, [Val | Acc]);
-        undefined ->
-            {missing, Key}
+    case maps:get(Key, Env) of
+        [] when Key =:= txs -> defer_check;
+        defer_check         -> defer_check;
+        {error, _Rsn} = Err -> Err;
+        Val                 -> get_required_args(Rest, Env, [Val | Acc])
     end;
 get_required_args([], _Args, Acc) ->
     {ok, lists:reverse(Acc)}.
@@ -368,24 +372,23 @@ txs_hash(Header, Txs) ->
         _Other  -> {error, malformed_txs_hash}
     end.
 
-%% TODO
-gas_limit(Block) ->
-    case aec_blocks:gas(Block) =< aec_governance:block_gas_limit() of
+gas_limit(Header, Txs) ->
+    case aec_blocks:gas(Header, Txs) =< aec_governance:block_gas_limit() of
         true  -> ok;
         false -> {error, gas_limit_exceeded}
     end.
 
-%% txs_fee(Header, STxs) ->
-%%     Protocol = aec_headers:version(Header),
-%%     Height = aec_headers:height(Header),
-%%     case lists:all(
-%%            fun(STx) ->
-%%                    Tx = aetx_sign:tx(STx),
-%%                    aetx:fee(Tx) >= aetx:min_fee(Tx, Height, Protocol)
-%%            end, STxs) of
-%%         true  -> ok;
-%%         false -> {error, invalid_minimal_tx_fee}
-%%     end.
+txs_fee(Header, STxs) ->
+    Protocol = aec_headers:version(Header),
+    Height = aec_headers:height(Header),
+    case lists:all(
+           fun(STx) ->
+                   Tx = aetx_sign:tx(STx),
+                   aetx:fee(Tx) >= aetx:min_fee(Tx, Height, Protocol)
+           end, STxs) of
+        true  -> ok;
+        false -> {error, invalid_minimal_tx_fee}
+    end.
 
 pof(_Header, no_fraud) ->
     ok;

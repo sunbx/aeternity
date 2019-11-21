@@ -13,6 +13,7 @@
          deserialize_from_binary/1,
          difficulty/1,
          gas/1,
+         gas/2,
          hash_internal_representation/1,
          height/1,
          is_block/1,
@@ -236,9 +237,13 @@ difficulty(Block) ->
     aeminer_pow:target_to_difficulty(target(Block)).
 
 -spec gas(micro_block()) -> non_neg_integer().
-gas(#mic_block{txs = Txs} = Block) ->
-    Version = aec_blocks:version(Block),
-    Height = aec_blocks:height(Block),
+gas(#mic_block{header = Header, txs = Txs} = Block) ->
+    gas(Header, Txs).
+
+-spec gas(aec_headers:micro_header(), tx_list()) -> non_neg_integer().
+gas(Header, Txs) ->
+    Version = aec_headers:version(Header),
+    Height = aec_headers:height(Header),
     lists:foldl(fun(Tx, Acc) -> aetx:gas_limit(aetx_sign:tx(Tx), Height, Version) + Acc end, 0, Txs).
 
 -spec time_in_msecs(block()) -> non_neg_integer().

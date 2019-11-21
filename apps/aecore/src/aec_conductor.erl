@@ -145,14 +145,13 @@ is_leader() ->
 post_block(VBlock) ->
     Block = aec_valid_block:block(VBlock),
     Height = aec_blocks:height(Block),
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    case aec_validation:validate_block(Block, Protocol) of
-        ok ->
+    Env = maybe_get_onchain_env(VBlock),
+    Env2 = Env#{protocol => aec_hard_forks:protocol_effective_at_height(Height)},
+    case aec_valid_block:check(VBlock, Env2, #{process => aec_sync}) of
+        {ok, VBlock2} ->
+            [] = aec_valid_block:pending_checks(VBlock2),
             gen_server:call(?SERVER, {post_block, Block}, 30000);
-        {error, {header, Reason}} ->
-            epoch_mining:info("Header failed validation: ~p", [Reason]),
-            {error, Reason};
-        {error, {block, Reason}} ->
+        {error, Reason} ->
             epoch_mining:info("Block failed validation: ~p", [Reason]),
             {error, Reason}
     end.
@@ -161,17 +160,45 @@ post_block(VBlock) ->
 add_synced_block(VBlock) ->
     Block = aec_valid_block:block(VBlock),
     Height = aec_blocks:height(Block),
-    Protocol = aec_hard_forks:protocol_effective_at_height(Height),
-    case aec_validation:validate_block(Block, Protocol) of
-        ok ->
+    Env = maybe_get_onchain_env(VBlock),
+    Env2 = Env#{protocol => aec_hard_forks:protocol_effective_at_height(Height)},
+    case aec_valid_block:check(VBlock, Env2, #{process => aec_sync}) of
+        {ok, VBlock2} ->
+            [] = aec_valid_block:pending_checks(VBlock2) of
             gen_server:call(?SERVER, {add_synced_block, Block}, 30000);
-        {error, {header, Reason}} ->
-            epoch_mining:info("Header failed validation: ~p", [Reason]),
-            {error, Reason};
-        {error, {block, Reason}} ->
+        {error, Reason} ->
             epoch_mining:info("Block failed validation: ~p", [Reason]),
             {error, Reason}
     end.
+
+maybe_get_onchain_env(VBlock) ->
+    case aec_valid_block:pending_env(VBlock, db) of
+        EnvKeys when EnvKeys =/= [] ->
+            get_onchain_env(EnvKeys, aec_valid_block:block(VBlock));
+        [] ->
+            #{}
+    end.
+
+get_onchain_env(EnvKeys, Block) ->
+    get_onchain_env(EnvKeys, Block, #{}).
+
+get_onchain_env([prev_header | Rest], Block, Acc) ->
+    PrevHeader =
+        case aec_chain:get_header(aec_blocks:prev_hash(Block)) of
+               {ok, Header} -> Header;
+               error        -> {error, orphan_block}
+        end,
+    get_onchain_env(Rest, Block, Acc#{prev_header => PrevHeader});
+get_onchain_env([prev_key_header | Rest], Block, Acc) ->
+    PrevKeyHeader =
+        case aec_chain:get_header(aec_blocks:prev_key_hash(Block)) of
+               {ok, Header} -> Header;
+               error        -> {error, orphan_block}
+        end,
+    get_onchain_env(Rest, Block, Acc#{prev_key_header => PrevKeyHeader});
+get_onchain_env([], _Block, Acc) ->
+    Acc.
+
 
 -spec get_key_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
 get_key_block_candidate() ->

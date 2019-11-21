@@ -979,7 +979,7 @@ handle_generation(_S, KeyBlock, MicroBlocks, forward) ->
             prev_key_header => KeyHeader},
     case handle_micro_blocks(MicroBlocks, Env, sync, []) of
         {ok, VMicroBlocks} ->
-            %% No need to validated key block, it won't be added by the
+            %% No need to validate key block, it won't be added by the
             %% conductor.
             VKeyBlock = new_valid_block(KeyBlock, sync),
             {ok, VKeyBlock, VMicroBlocks, forward};
@@ -987,16 +987,19 @@ handle_generation(_S, KeyBlock, MicroBlocks, forward) ->
             Err
     end;
 handle_generation(_S, KeyBlock, MicroBlocks, backward) ->
-    case handle_micro_blocks(MicroBlocks, #{}, sync, []) of
+    Env = #{prev_header     => defer_check,
+            prev_key_header => defer_check},
+    case handle_micro_blocks(MicroBlocks, Env, sync, []) of
          {ok, VMicroBlocks} ->
-            Env = case last_micro_block_header(MicroBlocks) of
-                      MicroHeader when MicroHeader =/= undefined ->
-                          #{prev_header => MicroHeader};
-                      undefined ->
-                          #{}
-                  end,
+            Env2 =
+                case last_micro_block_header(MicroBlocks) of
+                    MicroHeader when MicroHeader =/= undefined ->
+                        Env#{prev_header => MicroHeader};
+                    undefined ->
+                        Env
+                end,
             VKeyBlock = new_valid_block(KeyBlock, sync),
-            case check_block(VKeyBlock, Env, #{missing_env => defer_check}) of
+            case check_block(VKeyBlock, Env2) of
                 {ok, VKeyBlock2} -> {ok, VKeyBlock2, VMicroBlocks, backward};
                 Err = {error, _} -> Err
             end;
@@ -1006,7 +1009,7 @@ handle_generation(_S, KeyBlock, MicroBlocks, backward) ->
 
 handle_micro_blocks([Block | Rest], Env, Origin, Acc) ->
     VBlock = new_valid_block(Block, Origin),
-    case check_block(VBlock, Env, #{missing_env => defer_check}) of
+    case check_block(VBlock, Env) of
         {ok, VBlock2} ->
             Env2 = Env#{prev_header => aec_blocks:to_header(Block)},
             handle_micro_blocks(Rest, Env2, Origin, [VBlock2 | Acc]);
@@ -1027,7 +1030,7 @@ handle_block(S, Block, gossip = Origin) ->
     Header = aec_blocks:to_header(Block),
     VBlock = new_valid_block(Block, Origin),
     Env = maps:put(sync_height, SyncHeight, get_onchain_env(Header)),
-    case check_block(VBlock, Env, #{missing_env => {error, orphan_block}}) of
+    case check_block(VBlock, Env) of
         {ok, VBlock2} ->
             {ok, HH} = aec_headers:hash_header(Header),
             epoch_sync:debug("Got new block: ~s", [pp(HH)]),
@@ -1044,7 +1047,7 @@ handle_light_micro_block(S, Header, TxHashes, PoF) ->
     Block = aec_blocks:new_micro_from_header(Header, [], PoF),
     VBlock = new_valid_block(Block, gossip),
     Env = maps:put(sync_height, SyncHeight, get_onchain_env(Header)),
-    case check_block(VBlock, Env, #{missing_env => {error, orphan_block}}) of
+    case check_block(VBlock, Env) of
         {ok, VBlock2} ->
             case get_micro_block_txs(TxHashes) of
                 {all, Txs} ->
@@ -1100,12 +1103,15 @@ get_onchain_env(Header) ->
                               prev_key_header => PrevKeyHeader,
                               top_header      => TopHeader};
                         error ->
-                            #{prev_header => PrevHeader,
-                              top_header  => TopHeader}
+                            #{prev_header     => PrevHeader,
+                              top_header      => TopHeader,
+                              prev_key_header => {error, orphan_block}}
                     end
             end;
         error ->
-            #{top_header => TopHeader}
+            #{top_header      => TopHeader,
+              prev_header     => {error, orphan_block},
+              prev_key_header => {error, orphan_block}}
     end.
 
 new_valid_block(Block, Origin) ->
@@ -1180,6 +1186,7 @@ handle_get_block_txs_rsp(State, {ok, _Vsn, Msg}) ->
             #{ valid_block := VBlock, tx_data := TxsAndTxHashes } = MicroBlockFragment,
             case fill_txs(TxsAndTxHashes, Txs) of
                 {ok, AllTxs} ->
+                    %% TODO: check AllTxs is not empty list
                     epoch_sync:info("Assembled new block: ~s", [pp(Hash)]),
                     %% Micro block header is already valid.
                     VBlock2 = aec_valid_block:set_txs(AllTxs, VBlock),
