@@ -40,74 +40,71 @@
 
 -define(PEER_CONN, aec_peer_connection).
 -define(SYNC, aec_sync).
+-define(HTTP, aehttp_dispatch_int).
 -define(CONDUCTOR, aec_conductor).
 
 -define(KEY_HEADER_SYNC_CHECKS,
-        [{block_presence,   [header]},
-         {pow,              [header]},
-         {max_time,         [header]},
-         {prev_header,      [header, prev_header]},
-         {protocol,         [header, protocol],     #{process => ?SYNC}},
-         {chain_connection, [header],               #{process => ?SYNC}}
+        [{block_presence,   [header],              [?PEER_CONN]},
+         {pow,              [header],              [?PEER_CONN]},
+         {max_time,         [header],              [?PEER_CONN]},
+         {prev_header,      [header, prev_header], [?PEER_CONN, ?SYNC]},
+         {protocol,         [header, protocol],    [?SYNC]},
+         {chain_connection, [header],              [?SYNC]}
+%%         {block_presence},  [header],              [?CONDUCTOR]}
         ]).
 
 -define(KEY_HEADER_GOSSIP_CHECKS,
-        [{gossiped_height,  [header, sync_height]},
-         {block_presence,   [header]},
-         {chain_connection, [header]},
-         {delta_height,     [header, top_header]},
-         {prev_header,      [header, prev_header]},
-         {protocol,         [header, prev_key_header]},
-         {cycle_time,       [header, prev_header]},
-         {max_time,         [header]},
-         {signature,        [header, prev_key_header]}
+        [{gossiped_height,  [header, sync_height], [?PEER_CONN]},
+         {delta_height,     [header, top_header],  [?PEER_CONN]},
+         {pow,              [header],              [?PEER_CONN]},
+         {block_presence,   [header],              [?PEER_CONN]},
+         {chain_connection, [header],              [?PEER_CONN]},
+         {prev_header,      [header, prev_header], [?PEER_CONN]},
+         {max_time,         [header],              [?PEER_CONN]},
+         {protocol,         [header, protocol],    [?SYNC]}
+%%         {block_presence},  [header],              [?CONDUCTOR]}
         ]).
+
+-define(KEY_HEADER_HTTP_CHECKS,
+        [{delta_height,     [header, top_header],  [?HTTP]},
+         {pow,              [header],              [?HTTP]},
+         {block_presence,   [header],              [?HTTP]},
+         {chain_connection, [header],              [?HTTP]},
+         {prev_header,      [header, prev_header], [?HTTP]},
+         {max_time,         [header],              [?HTTP]},
+         {protocol,         [header, protocol],    [?HTTP]}
+%%         {block_presence},  [header],              [?CONDUCTOR]}
+       ]).
 
 -define(MICRO_HEADER_SYNC_CHECKS,
-        [{block_presence,   [header]},
-         {max_time,         [header]},
-         {prev_header,      [header, prev_header]},
-         {protocol,         [header, prev_key_header]},
-         {cycle_time,       [header, prev_header]},
-         {signature,        [header, prev_key_header]},
-         {pof,              [header, pof]},
-         {txs_hash,         [header, txs]},
-         {gas_limit,        [header, txs]},
-         {txs_fee,          [header, txs]},
-         {chain_connection, [header],                   #{process => ?SYNC}}
+        [{block_presence,   [header],                  [?PEER_CONN]},
+         {max_time,         [header],                  [?PEER_CONN]},
+         {prev_header,      [header, prev_header],     [?PEER_CONN, ?SYNC]},
+         {protocol,         [header, prev_key_header], [?PEER_CONN, ?SYNC]},
+         {cycle_time,       [header, prev_header],     [?PEER_CONN, ?SYNC]},
+         {signature,        [header, prev_key_header], [?PEER_CONN, ?SYNC]},
+         {pof,              [header, pof],             [?PEER_CONN]},
+         {txs_hash,         [header, txs],             [?PEER_CONN]},
+         {gas_limit,        [header, txs],             [?PEER_CONN]},
+         {txs_fee,          [header, txs],             [?PEER_CONN]},
+         {chain_connection, [header],                  [?SYNC]}
         ]).
-
--define(KEY_HEADER_HTTP_CHECKS, []).
 
 -define(MICRO_HEADER_GOSSIP_CHECKS,
-        [{gossiped_height,  [header, sync_height]},
-         {block_presence,   [header]},
-         {chain_connection, [header]},
-         {delta_height,     [header, top_header]},
-         {prev_header,      [header, prev_header]},
-         {protocol,         [header, prev_key_header]},
-         {cycle_time,       [header, prev_header]},
-         {max_time,         [header]},
-         {signature,        [header, prev_key_header]},
-         {txs_hash,         [header, txs]}
+        [{gossiped_height,  [header, sync_height],     [?PEER_CONN]},
+         {block_presence,   [header],                  [?PEER_CONN]},
+         {chain_connection, [header],                  [?PEER_CONN]},
+         {delta_height,     [header, top_header],      [?PEER_CONN]},
+         {prev_header,      [header, prev_header],     [?PEER_CONN]},
+         {protocol,         [header, prev_key_header], [?PEER_CONN]},
+         {cycle_time,       [header, prev_header],     [?PEER_CONN]},
+         {max_time,         [header],                  [?PEER_CONN]},
+         {signature,        [header, prev_key_header], [?PEER_CONN]},
+         {txs_hash,         [header, txs],             [?PEER_CONN]}
         ]).
 
--define(LIGHT_MICRO_HEADER_GOSSIP_CHECKS,
-        [{gossiped_height,  [header, sync_height]},
-         {protocol,         [header, prev_key_header]},
-         {cycle_time,       [header, prev_header]},
-         {max_time,         [header]},
-         {chain_connection, [header]},
-         {delta_height,     [header, top_header]},
-         {prev_header,      [header, prev_header]},
-         {signature,        [header, prev_key_header]},
-         {pof,              [header, pof]}
-        ]).
-
--define(ENV_HEADER_HASHES,
-        #{top_header      => top_header_hash,
-          prev_header     => prev_header_hash,
-          prev_key_header => prev_key_header_hash}).
+-define(IS_DB_ENV(K),
+        K =:= prev_header; K =:= prev_key_header; K =:= top_header).
 
 -record(valid_block,
         {block,
@@ -121,16 +118,15 @@
 
 new(Block, Origin) ->
     #valid_block{block  = Block,
-                 checks = block_checks(Block, Origin),
+                 checks = block_checks(aec_blocks:type(Block), Origin),
                  origin = Origin}.
 
-check(#valid_block{block = Block, checks = Checks} = VBlock, Env, Opts) ->
-    HeaderChecks = maps:get(header, Checks),
-    Env2 = env(Block, Env),
-    case perform_checks(HeaderChecks, Env2, Opts) of
+check(#valid_block{block = Block, checks = Checks} = VBlock, Proc, Env) ->
+    #{header := HChecks} = Checks,
+    case perform_checks(HChecks, Proc, env(Block, Env)) of
         {ok, PendingChecks, DoneChecks} ->
             Checks2 = Checks#{header => #{pending => PendingChecks,
-                                          done => DoneChecks}},
+                                          done    => DoneChecks}},
             {ok, VBlock#valid_block{checks = Checks2}};
         {error, _Rsn} = Err ->
             Err
@@ -171,68 +167,94 @@ env(micro, Block, Env) ->
          txs    => aec_blocks:txs(Block),
          pof    => aec_blocks:pof(Block)}.
 
-block_checks(Block, Origin) ->
-    Type = aec_blocks:type(Block),
-    block_checks(Type, Block, Origin).
-
-block_checks(key, _Block, sync) ->
+block_checks(key, sync) ->
     #{header => #{pending => ?KEY_HEADER_SYNC_CHECKS, done => []}};
-block_checks(key, _Block, gossip) ->
-    Checks = ?KEY_HEADER_GOSSIP_CHECKS,
-    #{header => #{pending => Checks, done => []}};
-block_checks(key, _Block, http) ->
-    Checks = ?KEY_HEADER_HTTP_CHECKS,
-    #{header => #{pending => Checks, done => []}};
-block_checks(micro, _Block, sync) ->
+block_checks(key, gossip) ->
+    #{header => #{pending => ?KEY_HEADER_GOSSIP_CHECKS, done => []}};
+block_checks(key, http) ->
+    #{header => #{pending => ?KEY_HEADER_HTTP_CHECKS, done => []}};
+block_checks(micro, sync) ->
     %% TODO: txs
-    HeaderChecks = ?MICRO_HEADER_SYNC_CHECKS,
-    #{header => #{pending => HeaderChecks, done => []}};
-block_checks(micro, _Block, gossip) ->
-    Checks = ?LIGHT_MICRO_HEADER_GOSSIP_CHECKS,
-    #{header => #{pending => Checks, done => []}}.
+    #{header => #{pending => ?MICRO_HEADER_SYNC_CHECKS, done => []}};
+block_checks(micro, gossip) ->
+    #{header => #{pending => ?MICRO_HEADER_GOSSIP_CHECKS, done => []}}.
 
-perform_checks(#{pending := PendingChecks}, Env, Opts) ->
-    perform_checks(PendingChecks, Env, Opts, [], []).
+perform_checks(#{pending := PendingChecks}, Proc, Env) ->
+    perform_checks(PendingChecks, Proc, Env, [], []).
 
-perform_checks([Check | Rest], Env, Opts, PendingAcc, DoneAcc) ->
-    case perform_check(Check, Env, Opts) of
-        ok ->
-            perform_checks(Rest, Env, Opts, PendingAcc, [Check | DoneAcc]);
-        skip ->
-            perform_checks(Rest, Env, Opts, [Check | PendingAcc], DoneAcc);
-        {error, _Rsn} = Err ->
-            Err
+perform_checks([Check | Rest], Proc, Env, PendingAcc, DoneAcc) ->
+    case perform_check(Check, Proc, Env) of
+        {done, ok, Env2} ->
+            DCheck = done_check(Check),
+            perform_checks(Rest, Proc, Env2, PendingAcc, [DCheck | DoneAcc]);
+        {done, {error, _Rsn} = Err, _Env2} ->
+            Err;
+        {skip, keep_proc} ->
+            perform_checks(Rest, Proc, Env, [Check | PendingAcc], DoneAcc);
+        {skip, next_proc} ->
+            PCheck = pending_check(Check),
+            perform_checks(Rest, Proc, Env, [PCheck | PendingAcc], DoneAcc)
     end;
-perform_checks([], _Args, _Opts, PendingAcc, DoneAcc) ->
+perform_checks([], _Proc, _Env, PendingAcc, DoneAcc) ->
     {ok, lists:reverse(PendingAcc), lists:reverse(DoneAcc)}.
 
-perform_check({Fun, EnvKeys, RequiredOpts}, Env, Opts) ->
-    case has_matching_entries(RequiredOpts, Opts) of
-        true  -> perform_check(Fun, EnvKeys, Env, Opts);
-        false -> skip
-    end;
-perform_check({Fun, EnvKeys}, Env, Opts) ->
-    perform_check(Fun, EnvKeys, Env, Opts).
+perform_check({Fun, EnvKeys, [Proc | _Rest] = Procs}, Proc, Env) ->
+    perform_check(Fun, EnvKeys, Procs, Env);
+perform_check(_Check, _Proc, _Env) ->
+    {skip, keep_proc}.
 
-perform_check(Fun, EnvKeys, Env, _Opts) ->
+perform_check(Fun, EnvKeys, Procs, Env) ->
     case get_required_args(EnvKeys, Env, []) of
-        {ok, Args}          -> apply(?MODULE, Fun, Args);
-        defer_check         -> skip;
-        {error, _Rsn} = Err -> Err
+        {ok, Args} when is_list(Args) ->
+            {done, apply(?MODULE, Fun, Args), Env};
+        {ok, defer_check} ->
+            {skip, keep_proc};
+        {missing, Key} when ?IS_DB_ENV(Key) ->
+            case read_db_env(Key, maps:get(header, Env)) of
+                {ok, Val} ->
+                    perform_check(Fun, EnvKeys, Procs, Env#{Key => Val});
+                {error, not_found} ->
+                    case is_last_proc(Procs) of
+                        true  -> {error, orphan_block};
+                        false -> {skip, next_proc}
+                    end
+            end
     end.
 
-has_matching_entries(M1, M2) ->
-    M1 =:= maps:with(maps:keys(M1), M2).
+done_check({Fun, EnvKeys, [Proc | _Rest]}) ->
+    {Fun, EnvKeys, Proc}.
+
+pending_check({Fun, EnvKeys, [_Proc | Rest]}) ->
+    {Fun, EnvKeys, Rest}.
 
 get_required_args([Key | Rest], Env, Acc) ->
-    case maps:get(Key, Env) of
-        [] when Key =:= txs -> defer_check;
-        defer_check         -> defer_check;
-        {error, _Rsn} = Err -> Err;
-        Val                 -> get_required_args(Rest, Env, [Val | Acc])
+    case maps:get(Key, Env, undefined) of
+        [] when Key =:= txs ->
+            {ok, defer_check};
+        Val when Val =/= undefined ->
+            get_required_args(Rest, Env, [Val | Acc]);
+        undefined ->
+            {missing, Key}
     end;
 get_required_args([], _Args, Acc) ->
     {ok, lists:reverse(Acc)}.
+
+read_db_env(top_header, _Header) ->
+    %% Always returns header.
+    {ok, aec_chain:top_header()};
+read_db_env(prev_header, Header) ->
+    read_db_env_from_hash(prev_hash, Header);
+read_db_env(prev_key_header, Header) ->
+    read_db_env_from_hash(prev_key_hash, Header).
+
+read_db_env_from_hash(HeadersFun, Header) ->
+    case aec_chain:get_header(aec_headers:HeadersFun(Header)) of
+        {ok, Header2} -> {ok, Header2};
+        error         -> {error, not_found}
+    end.
+
+is_last_proc([_Proc | []]) -> true;
+is_last_proc(_Procs)       -> false.
 
 get_pending_env([{_Fun, EnvKeys, _Opts} | Rest], Acc) ->
     get_pending_env(Rest, add_keys(EnvKeys, Acc));

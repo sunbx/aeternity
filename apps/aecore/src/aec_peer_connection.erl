@@ -987,19 +987,17 @@ handle_generation(_S, KeyBlock, MicroBlocks, forward) ->
             Err
     end;
 handle_generation(_S, KeyBlock, MicroBlocks, backward) ->
-    Env = #{prev_header     => defer_check,
-            prev_key_header => defer_check},
-    case handle_micro_blocks(MicroBlocks, Env, sync, []) of
+    case handle_micro_blocks(MicroBlocks, #{}, sync, []) of
          {ok, VMicroBlocks} ->
-            Env2 =
+            Env =
                 case last_micro_block_header(MicroBlocks) of
                     MicroHeader when MicroHeader =/= undefined ->
-                        Env#{prev_header => MicroHeader};
+                        #{prev_header => MicroHeader};
                     undefined ->
-                        Env
+                        #{}
                 end,
             VKeyBlock = new_valid_block(KeyBlock, sync),
-            case check_block(VKeyBlock, Env2) of
+            case check_block(VKeyBlock, Env) of
                 {ok, VKeyBlock2} -> {ok, VKeyBlock2, VMicroBlocks, backward};
                 Err = {error, _} -> Err
             end;
@@ -1029,8 +1027,7 @@ handle_block(S, Block, gossip = Origin) ->
     SyncHeight = maps:get(sync_height, S, infinity),
     Header = aec_blocks:to_header(Block),
     VBlock = new_valid_block(Block, Origin),
-    Env = maps:put(sync_height, SyncHeight, get_onchain_env(Header)),
-    case check_block(VBlock, Env) of
+    case check_block(VBlock, #{sync_height => SyncHeight}) of
         {ok, VBlock2} ->
             {ok, HH} = aec_headers:hash_header(Header),
             epoch_sync:debug("Got new block: ~s", [pp(HH)]),
@@ -1046,8 +1043,7 @@ handle_light_micro_block(S, Header, TxHashes, PoF) ->
     SyncHeight = maps:get(sync_height, S, infinity),
     Block = aec_blocks:new_micro_from_header(Header, [], PoF),
     VBlock = new_valid_block(Block, gossip),
-    Env = maps:put(sync_height, SyncHeight, get_onchain_env(Header)),
-    case check_block(VBlock, Env) of
+    case check_block(VBlock, #{sync_height => SyncHeight}) of
         {ok, VBlock2} ->
             case get_micro_block_txs(TxHashes) of
                 {all, Txs} ->
@@ -1085,46 +1081,11 @@ last_micro_block_header([])   -> undefined;
 last_micro_block_header([MB]) -> aec_blocks:to_micro_header(MB);
 last_micro_block_header(MBs)  -> aec_blocks:to_micro_header(lists:last(MBs)).
 
-get_onchain_env(Header) ->
-    PrevHeaderHash = aec_headers:prev_hash(Header),
-    PrevKeyHash = aec_headers:prev_key_hash(Header),
-    TopHeader = aec_chain:top_header(),
-    case aec_chain:get_header(PrevHeaderHash) of
-        {ok, PrevHeader} ->
-            case aec_headers:type(PrevHeader) of
-                key ->
-                    #{prev_header     => PrevHeader,
-                      prev_key_header => PrevHeader,
-                      top_header      => TopHeader};
-                micro ->
-                    case aec_chain:get_header(PrevKeyHash) of
-                        {ok, PrevKeyHeader} ->
-                            #{prev_header     => PrevHeader,
-                              prev_key_header => PrevKeyHeader,
-                              top_header      => TopHeader};
-                        error ->
-                            #{prev_header     => PrevHeader,
-                              top_header      => TopHeader,
-                              prev_key_header => {error, orphan_block}}
-                    end
-            end;
-        error ->
-            #{top_header      => TopHeader,
-              prev_header     => {error, orphan_block},
-              prev_key_header => {error, orphan_block}}
-    end.
-
 new_valid_block(Block, Origin) ->
    aec_valid_block:new(Block, Origin).
 
 check_block(VBlock, Env) ->
-    check_block(VBlock, Env, #{}).
-
-check_block(VBlock, Env, Opts) ->
-    aec_valid_block:check(VBlock, Env, check_opts(Opts)).
-
-check_opts(Opts) ->
-    Opts#{process => ?MODULE}.
+    aec_valid_block:check(VBlock, ?MODULE, Env).
 
 %% -- Get block txs ----------------------------------------------------------
 
