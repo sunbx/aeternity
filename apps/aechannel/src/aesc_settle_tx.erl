@@ -19,6 +19,7 @@
          check/3,
          process/3,
          signers/2,
+         signers_location/0,
          version/1,
          serialization_template/1,
          serialize/1,
@@ -132,6 +133,9 @@ process(#channel_settle_tx{initiator_amount_final = InitiatorAmount,
 signers(#channel_settle_tx{} = Tx, _) ->
     {ok, [from_pubkey(Tx)]}.
 
+-spec signers_location() -> tx.
+signers_location() -> tx.
+
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_settle_tx{channel_id             = ChannelId,
                              from_id                = FromId,
@@ -203,4 +207,3 @@ version(_) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->
     true.
-

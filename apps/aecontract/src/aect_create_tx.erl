@@ -21,6 +21,7 @@
          check/3,
          process/3,
          signers/2,
+         signers_location/0,
          version/1,
          serialization_template/1,
          serialize/1,
@@ -206,6 +207,9 @@ check(#contract_create_tx{}, Trees,_Env) ->
 signers(#contract_create_tx{} = Tx, _) ->
     {ok, [owner_pubkey(Tx)]}.
 
+-spec signers_location() -> tx.
+signers_location() -> tx.
+
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#contract_create_tx{} = Tx, Trees, Env) ->
     Instructions =
@@ -318,4 +322,3 @@ version(_) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->
     true.
-

@@ -14,6 +14,7 @@
          check/3,
          process/3,
          signers/2,
+         signers_location/0,
          version/1,
          serialization_template/1,
          serialize/1,
@@ -131,6 +132,9 @@ signers(#channel_offchain_tx{} = Tx, Trees) ->
         {error, not_found} -> {error, channel_does_not_exist}
     end.
 
+-spec signers_location() -> trees.
+signers_location() -> trees.
+
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_offchain_tx{
              channel_id         = ChannelId,
@@ -157,7 +161,7 @@ serialize(#channel_offchain_tx{
 deserialize(?INITIAL_VSN,
             [ {channel_id        , ChannelId}
             , {round             , Round}
-            , {updates           , UpdatesBins} 
+            , {updates           , UpdatesBins}
             , {state_hash        , StateHash}]) ->
     channel = aeser_id:specialize_type(ChannelId),
     #channel_offchain_tx{

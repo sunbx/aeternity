@@ -20,6 +20,7 @@
          check/3,
          process/3,
          signers/2,
+         signers_location/0,
          version/1,
          serialization_template/1,
          serialize/1,
@@ -162,6 +163,9 @@ process(#channel_create_tx{} = Tx, Trees, Env) ->
 -spec signers(tx(), aec_trees:trees()) -> {ok, list(aec_keys:pubkey())}.
 signers(#channel_create_tx{} = Tx, _) ->
     {ok, [initiator_pubkey(Tx), responder_pubkey(Tx)]}.
+
+-spec signers_location() -> tx.
+signers_location() -> tx.
 
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_create_tx{initiator_id       = InitiatorId,
@@ -324,7 +328,7 @@ valid_at_protocol(_, _) ->
     true.
 
 %%%===================================================================
-%%% Test setters 
+%%% Test setters
 %%%===================================================================
 
 -ifdef(TEST).

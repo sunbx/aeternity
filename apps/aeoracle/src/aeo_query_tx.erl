@@ -22,6 +22,7 @@
          check/3,
          process/3,
          signers/2,
+         signers_location/0,
          version/1,
          serialization_template/1,
          serialize/1,
@@ -148,6 +149,9 @@ check(#oracle_query_tx{}, Trees,_Env) ->
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#oracle_query_tx{} = Tx, _) ->
     {ok, [sender_pubkey(Tx)]}.
+
+-spec signers_location() -> tx.
+signers_location() -> tx.
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees()} | {error, term()}.
 process(#oracle_query_tx{} = QTx, Trees, Env) ->

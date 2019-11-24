@@ -21,6 +21,7 @@
          check/3,
          process/3,
          signers/2,
+         signers_location/0,
          version/1,
          serialization_template/1,
          serialize/1,
@@ -163,6 +164,9 @@ signers(#channel_deposit_tx{} = Tx, Trees) ->
         {error, not_found} -> {error, channel_not_found}
     end.
 
+-spec signers_location() -> trees.
+signers_location() -> trees.
+
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_deposit_tx{channel_id  = ChannelId,
                               from_id     = FromId,
@@ -248,7 +252,7 @@ valid_at_protocol(_, _) ->
     true.
 
 %%%===================================================================
-%%% Test setters 
+%%% Test setters
 %%%===================================================================
 
 -ifdef(TEST).

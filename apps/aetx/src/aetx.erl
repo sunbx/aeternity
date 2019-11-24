@@ -30,6 +30,7 @@
         , serialize_for_client/1
         , serialize_to_binary/1
         , signers/2
+        , signers_location/1
         , specialize_type/1
         , specialize_callback/1
         , update_tx/2
@@ -152,6 +153,9 @@
 
 -callback signers(Tx :: tx_instance(), Trees :: aec_trees:trees()) ->
     {ok, [aec_keys:pubkey()]} | {error, atom()}.
+
+-callback signers_location() ->
+    tx | trees.
 
 -callback check(Tx :: tx_instance(), aec_trees:trees(), aetx_env:env()) ->
     {ok, NewTrees :: aec_trees:trees()} | {error, Reason :: term()}.
@@ -374,6 +378,10 @@ accounts(#aetx{ cb = CB, tx = Tx }) ->
     {ok, [aec_keys:pubkey()]} | {error, atom()}.
 signers(#aetx{ cb = CB, tx = Tx }, Trees) ->
     CB:signers(Tx, Trees).
+
+-spec signers_location(Tx :: tx()) -> tx | trees.
+signers_location(#aetx{ cb = CB }) ->
+    CB:signers_location().
 
 %% We let 0 represent no TTL/infinity in order to keep the serialization as
 %% short as possible. Since there are no transactions in the genesis block

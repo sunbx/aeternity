@@ -20,6 +20,7 @@
          check/3,
          process/3,
          signers/2,
+         signers_location/0,
          version/1,
          serialization_template/1,
          serialize/1,
@@ -131,6 +132,9 @@ process(#ns_transfer_tx{} = TTx, Trees, Env) ->
 signers(#ns_transfer_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
 
+-spec signers_location() -> tx.
+signers_location() -> tx.
+
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_transfer_tx{account_id   = AccountId,
                           nonce        = Nonce,
@@ -222,4 +226,3 @@ version(_) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(_, _) ->
     true.
-

@@ -20,6 +20,7 @@
          check/3,
          process/3,
          signers/2,
+         signers_location/0,
          version/1,
          serialization_template/1,
          serialize/1,
@@ -68,7 +69,7 @@
 -export_type([tx/0]).
 
 %% Record introduced temporarily during Fortuna development, shipped in releases 2.4.0 and 2.5.0, and potentially stored in DB.
--record(v2_db_record, {	
+-record(v2_db_record, {
           channel_id    :: aeser_id:id(),
           from_id       :: aeser_id:id(),
           payload       :: binary(),
@@ -219,6 +220,9 @@ process(#channel_force_progress_tx{ offchain_trees = OffChainTrees
 signers(#channel_force_progress_tx{} = Tx, _) ->
     {ok, [from_pubkey(Tx)]}.
 
+-spec signers_location() -> tx.
+signers_location() -> tx.
+
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_force_progress_tx{channel_id     = ChannelId,
                                      from_id        = FromId,
@@ -345,4 +349,3 @@ valid_at_protocol(Protocol, #channel_force_progress_tx{payload = Payload} = Tx) 
     CorrectPayloadVsn = aesc_utils:is_payload_valid_at_protocol(Protocol,
                                                                 Payload),
     CorrectTxVsn andalso CorrectPayloadVsn.
-

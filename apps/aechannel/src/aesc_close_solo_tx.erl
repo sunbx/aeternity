@@ -19,6 +19,7 @@
          check/3,
          process/3,
          signers/2,
+         signers_location/0,
          version/1,
          serialization_template/1,
          serialize/1,
@@ -138,6 +139,9 @@ process(#channel_close_solo_tx{payload    = Payload,
 signers(#channel_close_solo_tx{} = Tx, _) ->
     {ok, [from_pubkey(Tx)]}.
 
+-spec signers_location() -> trees.
+signers_location() -> trees.
+
 -spec serialize(tx()) -> {vsn(), list()}.
 serialize(#channel_close_solo_tx{channel_id = ChannelId,
                                  from_id    = FromId,
@@ -208,4 +212,3 @@ version(_) ->
 -spec valid_at_protocol(aec_hard_forks:protocol_vsn(), tx()) -> boolean().
 valid_at_protocol(Protocol, #channel_close_solo_tx{payload = Payload}) ->
     aesc_utils:is_payload_valid_at_protocol(Protocol, Payload).
-

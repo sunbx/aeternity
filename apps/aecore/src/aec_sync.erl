@@ -892,8 +892,8 @@ heights_are_consecutive([{FirstHeight, _} | _] = Hashes) when
 
 do_get_generation(PeerId, LastHash) ->
     case aec_peer_connection:get_generation(PeerId, LastHash, forward) of
-        {ok, KeyBlock, VMicroBlocks, forward} ->
-            Generation = #{ key_block => KeyBlock,
+        {ok, VKeyBlock, VMicroBlocks, forward} ->
+            Generation = #{ key_block => VKeyBlock,
                             micro_blocks => VMicroBlocks,
                             dir => forward },
             add_generation(Generation);

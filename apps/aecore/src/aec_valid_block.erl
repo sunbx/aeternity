@@ -18,9 +18,9 @@
          type/1
         ]).
 
--export([block_presence/1,
+-export([gossiped_height/2,
+         block_presence/1,
          pow/1,
-         max_time/1,
          prev_header/2,
          protocol/2,
          chain_connection/1,
@@ -31,7 +31,8 @@
          signature/2,
          txs_hash/2,
          gas_limit/2,
-         txs_fee/2
+         txs_fee/2,
+         txs_signatures/2
         ]).
 
 -export_type([block/0]).
@@ -103,6 +104,10 @@
          {txs_hash,         [header, txs],             [?PEER_CONN]}
         ]).
 
+-define(TXS_CHECKS,
+        [{txs_signatures, [header, txs], [?PEER_CONN]}
+        ]).
+
 -define(IS_DB_ENV(K),
         K =:= prev_header; K =:= prev_key_header; K =:= top_header).
 
@@ -122,12 +127,28 @@ new(Block, Origin) ->
                  origin = Origin}.
 
 check(#valid_block{block = Block, checks = Checks} = VBlock, Proc, Env) ->
-    #{header := HChecks} = Checks,
-    case perform_checks(HChecks, Proc, env(Block, Env)) of
-        {ok, PendingChecks, DoneChecks} ->
-            Checks2 = Checks#{header => #{pending => PendingChecks,
-                                          done    => DoneChecks}},
-            {ok, VBlock#valid_block{checks = Checks2}};
+    #{header := HeaderChecks} = Checks,
+    Env2 = header_env(Block, Env),
+    case perform_checks(HeaderChecks, Proc, Env2) of
+        {ok, PendingHeaderChecks, DoneHeaderChecks} ->
+            Checks2 =
+                Checks#{header => #{pending => PendingHeaderChecks,
+                                    done    => DoneHeaderChecks}},
+            case type(Block) of
+                key ->
+                    {ok, VBlock#valid_block{checks = Checks2}};
+                micro ->
+                    #{txs := TxsChecks} = Checks,
+                    case perform_checks(TxsChecks, Proc, Env2) of
+                        {ok, PendingTxsChecks, DoneTxsChecks} ->
+                            Checks3 =
+                                Checks2#{txs => #{pending => PendingTxsChecks,
+                                                  done    => DoneTxsChecks}},
+                                {ok, VBlock#valid_block{checks = Checks3}};
+                        {error, _Rsn} = Err ->
+                            Err
+                    end
+            end;
         {error, _Rsn} = Err ->
             Err
     end.
@@ -157,12 +178,12 @@ type(#valid_block{block = Block}) ->
 
 %% Internal functions
 
-env(Block, Env) ->
-    env(aec_blocks:type(Block), Block, Env).
+header_env(Block, Env) ->
+    header_env(aec_blocks:type(Block), Block, Env).
 
-env(key, Block, Env) ->
+header_env(key, Block, Env) ->
     Env#{header => aec_blocks:to_key_header(Block)};
-env(micro, Block, Env) ->
+header_env(micro, Block, Env) ->
     Env#{header => aec_blocks:to_micro_header(Block),
          txs    => aec_blocks:txs(Block),
          pof    => aec_blocks:pof(Block)}.
@@ -174,10 +195,11 @@ block_checks(key, gossip) ->
 block_checks(key, http) ->
     #{header => #{pending => ?KEY_HEADER_HTTP_CHECKS, done => []}};
 block_checks(micro, sync) ->
-    %% TODO: txs
-    #{header => #{pending => ?MICRO_HEADER_SYNC_CHECKS, done => []}};
+    #{header => #{pending => ?MICRO_HEADER_SYNC_CHECKS, done => []},
+      txs    => #{pending => ?TXS_CHECKS, done => []}};
 block_checks(micro, gossip) ->
-    #{header => #{pending => ?MICRO_HEADER_GOSSIP_CHECKS, done => []}}.
+    #{header => #{pending => ?MICRO_HEADER_GOSSIP_CHECKS, done => []},
+      txs    => #{pending => ?TXS_CHECKS, done => []}}.
 
 perform_checks(#{pending := PendingChecks}, Proc, Env) ->
     perform_checks(PendingChecks, Proc, Env, [], []).
@@ -419,6 +441,27 @@ pof(Header, PoF) ->
         true  -> aec_pof:validate(PoF);
         false -> {error, pof_hash_mismatch}
     end.
+
+txs_signatures(Header, Txs) ->
+    Protocol = aec_headers:version(Header),
+    %% The Trees are created to make dialyzer happy.
+    Trees = aec_trees:new_without_backend(),
+    txs_signatures(Txs, Trees, Protocol).
+
+txs_signatures([Tx | Rest], Trees, Protocol) ->
+    case aetx:signers_location(Tx) of
+        tx ->
+            case aetx_sign:verify(Tx, Trees, Protocol) of
+                ok ->
+                    txs_signatures(Rest, Trees, Protocol);
+                {error, _Rsn} = Err ->
+                    Err
+            end;
+        trees ->
+            ok
+    end;
+txs_signatures([], _Trees, _Protocol) ->
+    ok.
 
 %% Helper functions
 

@@ -21,6 +21,7 @@
          check/3,
          process/3,
          signers/2,
+         signers_location/0,
          version/1,
          serialization_template/1,
          serialize/1,
@@ -168,6 +169,9 @@ process_(#ns_claim_tx{} = ClaimTx, NameOrLockFee, Trees, Env) ->
 -spec signers(tx(), aec_trees:trees()) -> {ok, [aec_keys:pubkey()]}.
 signers(#ns_claim_tx{} = Tx, _) ->
     {ok, [account_pubkey(Tx)]}.
+
+-spec signers_location() -> tx.
+signers_location() -> tx.
 
 -spec serialize(tx()) -> {integer(), [{atom(), term()}]}.
 serialize(#ns_claim_tx{account_id = AccountId,
