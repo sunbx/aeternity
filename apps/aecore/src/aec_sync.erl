@@ -790,14 +790,23 @@ add_generation(#{dir := backward, key_block := KB, micro_blocks := MBs}) ->
 
 add_blocks([]) ->
     ok;
-add_blocks([B | Bs]) ->
-    try aec_conductor:add_synced_block(B) of
-        ok -> add_blocks(Bs);
-        Err -> Err
-    catch _:_ ->
-        lager:warning("Timeout adding_synced block: ~p", [B]),
-        {error, timeout}
+add_blocks([VBlock | Rest]) ->
+    case check_block(VBlock, #{}) of
+        {ok, VBlock2} ->
+            try aec_conductor:add_synced_block(VBlock2) of
+                ok -> add_blocks(Rest);
+                Err -> Err
+            catch _:_ ->
+                    lager:warning("Timeout adding_synced block: ~p",
+                                  [aec_valid_block:block(VBlock)]),
+                    {error, timeout}
+            end;
+         {erorr, _Rsn} = Err ->
+            Err
     end.
+
+check_block(VBlock, Env) ->
+    aec_valid_block:check(VBlock, ?MODULE, Env).
 
 %% Ping logic makes sure they always agree on genesis header (height 0)
 %% We look for the block that is both on remote highest chain and in our local

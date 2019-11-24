@@ -49,8 +49,8 @@
          {pow,              [header],              [?PEER_CONN]},
          {max_time,         [header],              [?PEER_CONN]},
          {prev_header,      [header, prev_header], [?PEER_CONN, ?SYNC]},
-         {protocol,         [header, protocol],    [?SYNC]},
-         {chain_connection, [header],              [?SYNC]}
+         {chain_connection, [header],              [?SYNC]},
+         {protocol,         [header, protocol],    [?SYNC]}
 %%         {block_presence},  [header],              [?CONDUCTOR]}
         ]).
 
@@ -62,7 +62,7 @@
          {chain_connection, [header],              [?PEER_CONN]},
          {prev_header,      [header, prev_header], [?PEER_CONN]},
          {max_time,         [header],              [?PEER_CONN]},
-         {protocol,         [header, protocol],    [?SYNC]}
+         {protocol,         [header, protocol],    [?PEER_CONN]}
 %%         {block_presence},  [header],              [?CONDUCTOR]}
         ]).
 
@@ -134,7 +134,7 @@ check(#valid_block{block = Block, checks = Checks} = VBlock, Proc, Env) ->
             Checks2 =
                 Checks#{header => #{pending => PendingHeaderChecks,
                                     done    => DoneHeaderChecks}},
-            case type(Block) of
+            case aec_blocks:type(Block) of
                 key ->
                     {ok, VBlock#valid_block{checks = Checks2}};
                 micro ->
@@ -232,7 +232,7 @@ perform_check(Fun, EnvKeys, Procs, Env) ->
         {ok, defer_check} ->
             {skip, keep_proc};
         {missing, Key} when ?IS_DB_ENV(Key) ->
-            case read_db_env(Key, maps:get(header, Env)) of
+            case get_db_env(Key, maps:get(header, Env)) of
                 {ok, Val} ->
                     perform_check(Fun, EnvKeys, Procs, Env#{Key => Val});
                 {error, not_found} ->
@@ -240,7 +240,10 @@ perform_check(Fun, EnvKeys, Procs, Env) ->
                         true  -> {error, orphan_block};
                         false -> {skip, next_proc}
                     end
-            end
+            end;
+        {missing, protocol} ->
+            {ok, Protocol} = get_protocol_env(maps:get(header, Env)),
+            perform_check(Fun, EnvKeys, Procs, Env#{protocol => Protocol})
     end.
 
 done_check({Fun, EnvKeys, [Proc | _Rest]}) ->
@@ -261,13 +264,17 @@ get_required_args([Key | Rest], Env, Acc) ->
 get_required_args([], _Args, Acc) ->
     {ok, lists:reverse(Acc)}.
 
-read_db_env(top_header, _Header) ->
+get_db_env(top_header, _Header) ->
     %% Always returns header.
     {ok, aec_chain:top_header()};
-read_db_env(prev_header, Header) ->
+get_db_env(prev_header, Header) ->
     read_db_env_from_hash(prev_hash, Header);
-read_db_env(prev_key_header, Header) ->
+get_db_env(prev_key_header, Header) ->
     read_db_env_from_hash(prev_key_hash, Header).
+
+get_protocol_env(Header) ->
+    Height = aec_headers:height(Header),
+    {ok, aec_hard_forks:protocol_effective_at_height(Height)}.
 
 read_db_env_from_hash(HeadersFun, Header) ->
     case aec_chain:get_header(aec_headers:HeadersFun(Header)) of
@@ -448,10 +455,11 @@ txs_signatures(Header, Txs) ->
     Trees = aec_trees:new_without_backend(),
     txs_signatures(Txs, Trees, Protocol).
 
-txs_signatures([Tx | Rest], Trees, Protocol) ->
+txs_signatures([STx | Rest], Trees, Protocol) ->
+    Tx = aetx_sign:tx(STx),
     case aetx:signers_location(Tx) of
         tx ->
-            case aetx_sign:verify(Tx, Trees, Protocol) of
+            case aetx_sign:verify(STx, Trees, Protocol) of
                 ok ->
                     txs_signatures(Rest, Trees, Protocol);
                 {error, _Rsn} = Err ->

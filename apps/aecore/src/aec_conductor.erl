@@ -144,30 +144,14 @@ is_leader() ->
 -spec post_block(aec_valid_block:block()) -> 'ok' | {'error', any()}.
 post_block(VBlock) ->
     Block = aec_valid_block:block(VBlock),
-    Height = aec_blocks:height(Block),
-    Env = #{protocol => aec_hard_forks:protocol_effective_at_height(Height)},
-    case aec_valid_block:check(VBlock, Env, #{process => aec_sync}) of
-        {ok, VBlock2} ->
-            [] = aec_valid_block:pending_checks(VBlock2),
-            gen_server:call(?SERVER, {post_block, Block}, 30000);
-        {error, Reason} ->
-            epoch_mining:info("Block failed validation: ~p", [Reason]),
-            {error, Reason}
-    end.
+    [] = aec_valid_block:pending_checks(VBlock),
+    gen_server:call(?SERVER, {post_block, Block}, 30000).
 
 -spec add_synced_block(aec_valid_block:block()) -> 'ok' | {'error', any()}.
 add_synced_block(VBlock) ->
     Block = aec_valid_block:block(VBlock),
-    Height = aec_blocks:height(Block),
-    Env = #{protocol => aec_hard_forks:protocol_effective_at_height(Height)},
-    case aec_valid_block:check(VBlock, aec_sync, Env) of
-        {ok, VBlock2} ->
-            [] = aec_valid_block:pending_checks(VBlock2),
-            gen_server:call(?SERVER, {add_synced_block, Block}, 30000);
-        {error, Reason} ->
-            epoch_mining:info("Block failed validation: ~p", [Reason]),
-            {error, Reason}
-    end.
+    [] = aec_valid_block:pending_checks(VBlock),
+    gen_server:call(?SERVER, {add_synced_block, Block}, 30000).
 
 -spec get_key_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
 get_key_block_candidate() ->
