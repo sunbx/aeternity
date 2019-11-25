@@ -801,7 +801,7 @@ add_blocks([VBlock | Rest]) ->
                                   [aec_valid_block:block(VBlock)]),
                     {error, timeout}
             end;
-         {erorr, _Rsn} = Err ->
+         {error, _Rsn} = Err ->
             Err
     end.
 
