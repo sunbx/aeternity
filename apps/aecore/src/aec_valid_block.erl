@@ -1,9 +1,15 @@
 %%%=============================================================================
 %%% @copyright (C) 2019, Aeternity Anstalt
 %%% @doc
-%%% TODO
+%%% A valid block is created from a key or micro block and its origin. Based on
+%%% the origin, it's possible to decide what checks need to be performed to
+%%% validate the block.
+%%% The validation of a block can be performed in different phases and
+%%% processes. Block checks require parameters such as previous header,
+%%% protocol, etc., if those are not available, these checks can be postponed
+%%% and performed later.
 %%% @end
-%%%=============================================================================
+%%% =============================================================================
 
 -module(aec_valid_block).
 
