@@ -10,7 +10,6 @@
 %% API
 -export([new/2,
          check/3,
-         pending_env/2,
          pending_checks/1,
          block/1,
          set_txs/2,
@@ -153,14 +152,6 @@ check(#valid_block{block = Block, checks = Checks} = VBlock, Proc, Env) ->
             Err
     end.
 
-pending_env(#valid_block{checks = Checks}, all) ->
-    #{header := #{pending := HChecks}} = Checks,
-    maps:keys(get_pending_env(HChecks, #{}));
-pending_env(#valid_block{checks = Checks}, db) ->
-    #{header := #{pending := HChecks}} = Checks,
-    PendingEnvKeys = get_pending_env(HChecks, #{}),
-    maps:keys(maps:with([prev_header, prev_key_header], PendingEnvKeys)).
-
 pending_checks(#valid_block{checks = #{header := #{pending := HChecks}}}) ->
     HChecks.
 
@@ -284,18 +275,6 @@ read_db_env_from_hash(HeadersFun, Header) ->
 
 is_last_proc([_Proc | []]) -> true;
 is_last_proc(_Procs)       -> false.
-
-get_pending_env([{_Fun, EnvKeys, _Opts} | Rest], Acc) ->
-    get_pending_env(Rest, add_keys(EnvKeys, Acc));
-get_pending_env([{_Fun, EnvKeys} | Rest], Acc) ->
-    get_pending_env(Rest, add_keys(EnvKeys, Acc));
-get_pending_env([], Acc) ->
-    Acc.
-
-add_keys(EnvKeys, Acc) ->
-    lists:foldl(
-      fun(Key, Acc2) -> maps:put(Key, true, Acc2) end,
-      Acc, EnvKeys).
 
 %% Check functions
 
