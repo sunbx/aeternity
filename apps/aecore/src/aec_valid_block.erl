@@ -20,8 +20,7 @@
          pending_checks/1,
          block/1,
          set_txs/2,
-         origin/1,
-         type/1
+         origin/1
         ]).
 
 -export([gossiped_height/2,
@@ -194,9 +193,6 @@ set_txs(Txs, #valid_block{block = Block} = VBlock) ->
 -spec origin(block()) -> origin().
 origin(#valid_block{origin = Origin}) ->
     Origin.
-
-type(#valid_block{block = Block}) ->
-    aec_blocks:type(Block).
 
 %% Internal functions
 
