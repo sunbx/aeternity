@@ -453,7 +453,8 @@ txs_hash(Header, Txs) ->
     end.
 
 gas_limit(Header, Txs) ->
-    case aec_blocks:gas(Header, Txs) =< aec_governance:block_gas_limit() of
+    Block = aec_blocks:new_micro_from_header(Header, Txs, no_fraud),
+    case aec_blocks:gas(Block) =< aec_governance:block_gas_limit() of
         true  -> ok;
         false -> {error, gas_limit_exceeded}
     end.
