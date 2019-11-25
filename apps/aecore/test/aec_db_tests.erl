@@ -65,7 +65,7 @@ write_chain_test_() ->
      [{"Write a block to chain and read it back.",
        fun() ->
                GB = aec_test_utils:genesis_block(),
-               ok = aec_conductor:post_block(GB),
+               ok = post_block(GB),
 
                Hash = block_hash(GB),
 
@@ -95,14 +95,14 @@ write_chain_test_() ->
                ?assertEqual(GHash, TopBlockHash),
 
                %% Add one block
-               ?assertEqual(ok, aec_conductor:post_block(B1)),
+               ?assertEqual(ok, post_block(B1)),
 
                %% B1 should be the top block
                NewTopBlockHash = aec_db:get_top_block_hash(),
                ?assertEqual(block_hash(B1), NewTopBlockHash),
 
                %% Add another block
-               ?assertEqual(ok, aec_conductor:post_block(B2)),
+               ?assertEqual(ok, post_block(B2)),
 
                %% Now B2 should be the top block
                LastTopBlockHash = aec_db:get_top_block_hash(),
@@ -155,8 +155,8 @@ restart_test_() ->
        fun() ->
                [GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3),
                ?assertEqual({ok, GB}, aec_chain:get_key_block_by_height(0)),
-               ?assertEqual(ok, aec_conductor:post_block(B1)),
-               ?assertEqual(ok, aec_conductor:post_block(B2)),
+               ?assertEqual(ok, post_block(B1)),
+               ?assertEqual(ok, post_block(B2)),
                %% Now B2 should be the top block
                TopBlockHash = aec_db:get_top_block_hash(),
                B2Hash = block_hash(B2),
@@ -279,3 +279,7 @@ persisted_database_write_error_test_() ->
                ok
        end}
      ]}.
+
+post_block(Block) ->
+    VBlock = aec_valid_block:new(Block, node),
+    aec_conductor:post_block(VBlock).

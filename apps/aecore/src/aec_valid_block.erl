@@ -10,6 +10,7 @@
 %% API
 -export([new/2,
          check/3,
+         check_all/2,
          pending_checks/1,
          block/1,
          set_txs/2,
@@ -152,6 +153,21 @@ check(#valid_block{block = Block, checks = Checks} = VBlock, Proc, Env) ->
             Err
     end.
 
+check_all(#valid_block{checks = Checks} = VBlock, Env) ->
+    Procs = get_procs(Checks),
+    check_all(VBlock, Procs, Env).
+
+check_all(VBlock, [Proc | Rest], Env) ->
+    case check(VBlock, Proc, Env) of
+        {ok, VBlock2} ->
+            case length(Rest) of
+                0  -> {ok, VBlock2};
+                _N -> check_all(VBlock2, Rest, Env)
+            end;
+        {error, _Rsn} = Err ->
+            Err
+    end.
+
 pending_checks(#valid_block{checks = #{header := #{pending := HChecks}}}) ->
     HChecks.
 
@@ -168,6 +184,24 @@ type(#valid_block{block = Block}) ->
     aec_blocks:type(Block).
 
 %% Internal functions
+
+get_procs(#{header := #{pending := HChecks}, txs := #{pending := TxsChecks}}) ->
+    get_procs(HChecks ++ TxsChecks, []);
+get_procs(#{header := #{pending := HChecks}}) ->
+    get_procs(HChecks, []).
+
+get_procs([{_Fun, _EnvKeys, Procs} | Rest], Acc) ->
+    get_procs(Rest, add_procs(Procs, Acc));
+get_procs([], Acc) ->
+    lists:reverse(Acc).
+
+add_procs([Proc | Rest], Acc) ->
+    case lists:member(Proc, Acc) of
+        true  -> add_procs(Rest, Acc);
+        false -> add_procs(Rest, [Proc | Acc])
+    end;
+add_procs([], Acc) ->
+    Acc.
 
 header_env(Block, Env) ->
     header_env(aec_blocks:type(Block), Block, Env).
@@ -190,6 +224,11 @@ block_checks(micro, sync) ->
       txs    => #{pending => ?TXS_CHECKS, done => []}};
 block_checks(micro, gossip) ->
     #{header => #{pending => ?MICRO_HEADER_GOSSIP_CHECKS, done => []},
+      txs    => #{pending => ?TXS_CHECKS, done => []}};
+block_checks(key, node) ->
+    #{header => #{pending => [], done => []}};
+block_checks(micro, node) ->
+    #{header => #{pending => [], done => []},
       txs    => #{pending => ?TXS_CHECKS, done => []}}.
 
 perform_checks(#{pending := PendingChecks}, Proc, Env) ->

@@ -57,8 +57,9 @@ mine_block_test_() ->
                  Block = aec_blocks:set_nonce_and_pow(BlockCandidate, Nonce1, Evd),
 
                  ?assertEqual(1, aec_blocks:height(Block)),
-                 ?assertEqual(ok, aec_headers:validate_key_block_header(
-                                    aec_blocks:to_header(Block), aec_blocks:version(Block)))
+                 ?assertEqual(ok, aec_valid_block:protocol(
+                                    aec_blocks:to_header(Block), aec_blocks:version(Block))),
+                 ?assertEqual(ok, aec_valid_block:pow(aec_blocks:to_header(Block)))
          end}},
        {timeout, 60,
         {"Proof of work fails with no_solution",

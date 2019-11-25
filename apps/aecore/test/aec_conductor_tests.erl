@@ -215,18 +215,10 @@ chain_test_() ->
      fun() ->
              TmpKeysDir = setup_common(),
              {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
-             meck:new(aec_headers, [passthrough]),
-             meck:new(aec_blocks, [passthrough]),
-             meck:expect(aec_headers, validate_key_block_header, fun(_, _) -> ok end),
-             meck:expect(aec_headers, validate_micro_block_header, fun(_, _) -> ok end),
-             meck:expect(aec_blocks, validate_key_block, fun(_, _) -> ok end),
-             meck:expect(aec_blocks, validate_micro_block, fun(_, _) -> ok end),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
              teardown_common(TmpKeysDir),
-             meck:unload(aec_headers),
-             meck:unload(aec_blocks),
              ok
      end,
      [
@@ -245,8 +237,8 @@ test_start_mining_add_block() ->
     ?TEST_MODULE:start_mining(),
     [_GB, B1, B2] = aec_test_utils:gen_blocks_only_chain(3, preset_accounts(Keys)),
     BH2 = aec_blocks:to_header(B2),
-    ?assertEqual(ok, ?TEST_MODULE:post_block(B1)),
-    ?assertEqual(ok, ?TEST_MODULE:post_block(B2)),
+    ?assertEqual(ok, post_block(B1)),
+    ?assertEqual(ok, post_block(B2)),
     aec_test_utils:wait_for_it(
       fun () -> aec_chain:top_header() end,
       BH2).
@@ -265,7 +257,7 @@ test_preemption_pushed() ->
     Hash2 = block_hash(Top2),
 
     %% Seed the server with the first part of the chain
-    [ok = ?TEST_MODULE:post_block(B) || B <- Chain1],
+    [ok = post_block(B) || B <- Chain1],
     wait_for_top_block_hash(Hash1),
 
     %% Start mining and make sure we are starting
@@ -276,7 +268,7 @@ test_preemption_pushed() ->
     wait_for_start_mining(Hash1),
 
     %% Post the rest of the chain, which will take over.
-    [?TEST_MODULE:post_block(B) || B <- Chain2],
+    [post_block(B) || B <- Chain2],
     wait_for_top_block_hash(Hash2),
 
     %% The mining should now have been preempted
@@ -300,7 +292,7 @@ test_preemption_pulled() ->
     Hash2 = block_hash(Top2),
 
     %% Seed the server with the first part of the chain
-    [ok = ?TEST_MODULE:post_block(B) || B <- Chain1],
+    [ok = post_block(B) || B <- Chain1],
     wait_for_top_block_hash(Hash1),
 
     %% Start mining and make sure we are starting
@@ -311,7 +303,7 @@ test_preemption_pulled() ->
     wait_for_start_mining(Hash1),
 
     %% Sync the rest of the chain, which will take over.
-    [?TEST_MODULE:post_block(B) || B <- Chain2],
+    [post_block(B) || B <- Chain2],
     wait_for_top_block_hash(Hash2),
 
     %% The mining should now have been preempted
@@ -367,17 +359,17 @@ test_block_publishing() ->
     aec_events:subscribe(block_created),
 
     %% Seed the server with the first part of the chain
-    ok = ?TEST_MODULE:post_block(B1),
+    ok = post_block(B1),
     wait_for_top_block_hash(H1),
     expect_publish_event_hashes([H1]),
     expect_top_event_hashes([H1]),
-    ok = ?TEST_MODULE:post_block(B2),
+    ok = post_block(B2),
     wait_for_top_block_hash(H2),
     expect_publish_event_hashes([H2]),
     expect_top_event_hashes([H2]),
 
     %% Repeat 2nd block, make sure it has no effect
-    ok = ?TEST_MODULE:post_block(B2),
+    ok = post_block(B2),
     wait_for_top_block_hash(H2),
     expect_publish_event_hashes([]),
     expect_top_event_hashes([]),
@@ -397,7 +389,7 @@ test_block_publishing() ->
     ?assertEqual([], flush_gproc()),
 
     %% Post the rest of the chain, which will take over eventually
-    [?TEST_MODULE:post_block(B) || B <- [B2, B3, B4, B5]],
+    [post_block(B) || B <- [B2, B3, B4, B5]],
     wait_for_top_block_hash(H5),
 
     %% The first block cannot have taken over, so it should have no event
@@ -418,20 +410,12 @@ generation_test_() ->
      fun() ->
              TmpKeysDir = setup_common(),
              {ok, _} = ?TEST_MODULE:start_link([{autostart, false}]),
-             meck:new(aec_headers, [passthrough]),
-             meck:new(aec_blocks, [passthrough]),
              meck:new(aec_mining, [passthrough]),
-             meck:expect(aec_headers, validate_key_block_header, fun(_, _) -> ok end),
-             meck:expect(aec_headers, validate_micro_block_header, fun(_, _) -> ok end),
-             meck:expect(aec_blocks, validate_key_block, fun(_, _) -> ok end),
-             meck:expect(aec_blocks, validate_micro_block, fun(_, _) -> ok end),
              TmpKeysDir
      end,
      fun(TmpKeysDir) ->
              teardown_common(TmpKeysDir),
              meck:unload(aec_mining),
-             meck:unload(aec_blocks),
-             meck:unload(aec_headers),
              ok
      end,
      [
@@ -496,7 +480,7 @@ test_received_block_signing() ->
     assert_generation_state(stopped),
 
     [_GB, KB1] = aec_test_utils:gen_blocks_only_chain(2, preset_accounts(Keys)),
-    ?assertEqual(ok, ?TEST_MODULE:post_block(KB1)),
+    ?assertEqual(ok, post_block(KB1)),
 
     {_, KB1} = wait_for_block_to_publish(),
     assert_leader(true),
@@ -666,10 +650,18 @@ add_new_block_and_wait_for_top_hash(AddFunction, B, H) ->
     add_new_block(AddFunction, B),
     wait_for_top_block_hash(H).
 
-add_new_block(post_block, B) ->
-    ?TEST_MODULE:post_block(B);
-add_new_block(add_synced_block, B) ->
-    ?TEST_MODULE:add_synced_block(B).
+add_new_block(post_block, Block) ->
+    VBlock = aec_valid_block:new(Block, http),
+    case aec_valid_block:check_all(VBlock, #{}) of
+        {ok, VBlock2}       -> ?TEST_MODULE:post_block(VBlock2);
+        {error, _Rsn} = Err -> Err
+    end;
+add_new_block(add_synced_block, Block) ->
+    VBlock = aec_valid_block:new(Block, sync),
+    case aec_valid_block:check_all(VBlock, #{}) of
+        {ok, VBlock2}       -> ?TEST_MODULE:post_block(VBlock2);
+        {error, _Rsn} = Err -> Err
+    end.
 
 assert_stopped() ->
     ?assertEqual(stopped, ?TEST_MODULE:get_mining_state()).
@@ -687,6 +679,13 @@ assert_leader(Value) ->
 
 assert_generation_state(Value) ->
     ?assertEqual(Value, aec_block_generator:get_generation_state()).
+
+post_block(Block) ->
+    post_block(Block, node).
+
+post_block(Block, node) ->
+    VBlock = aec_valid_block:new(Block, node),
+    ?TEST_MODULE:post_block(VBlock).
 
 block_hash(Block) ->
     {ok, Hash} = aec_blocks:hash_internal_representation(Block),
