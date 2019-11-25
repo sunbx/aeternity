@@ -56,8 +56,7 @@
         ]).
 
 %% Chain API
--export([ add_synced_block/1
-        , get_key_block_candidate/0
+-export([ get_key_block_candidate/0
         , post_block/1
         ]).
 
@@ -143,15 +142,8 @@ is_leader() ->
 
 -spec post_block(aec_valid_block:block()) -> 'ok' | {'error', any()}.
 post_block(VBlock) ->
-    Block = aec_valid_block:block(VBlock),
     [] = aec_valid_block:pending_checks(VBlock),
-    gen_server:call(?SERVER, {post_block, Block}, 30000).
-
--spec add_synced_block(aec_valid_block:block()) -> 'ok' | {'error', any()}.
-add_synced_block(VBlock) ->
-    Block = aec_valid_block:block(VBlock),
-    [] = aec_valid_block:pending_checks(VBlock),
-    gen_server:call(?SERVER, {add_synced_block, Block}, 30000).
+    gen_server:call(?SERVER, {post_block, VBlock}, 30000).
 
 -spec get_key_block_candidate() -> {'ok', aec_blocks:block()} | {'error', atom()}.
 get_key_block_candidate() ->
@@ -217,9 +209,6 @@ reinit_chain_state() ->
     aec_tx_pool:await_tx_pool(),
     ok.
 
-handle_call({add_synced_block, Block},_From, State) ->
-    {Reply, State1} = handle_synced_block(Block, State),
-    {reply, Reply, State1};
 handle_call(get_key_block_candidate,_From, #state{beneficiary = undefined} = State) ->
     {reply, {error, beneficiary_not_configured}, State};
 handle_call(get_key_block_candidate,_From, State) ->
@@ -1015,18 +1004,21 @@ handle_key_block_candidate_reply({{error, Reason}, _}, State) ->
 %%%===================================================================
 %%% In server context: A block was given to us from the outside world
 
-handle_synced_block(Block, State) ->
-    epoch_mining:info("synced_block: ~p", [Block]),
-    handle_add_block(Block, State, block_synced).
-
-handle_post_block(Block, State) ->
-    case aec_blocks:is_key_block(Block) of
-        true ->
-            epoch_mining:info("post_block: ~p", [Block]),
-            handle_add_block(Block, State, block_received);
-        false ->
-            epoch_mining:info("post_micro_block: ~p", [Block]),
-            handle_add_block(Block, State, micro_block_received)
+handle_post_block(VBlock, State) ->
+    Block = aec_valid_block:block(VBlock),
+    case aec_valid_block:origin(VBlock) of
+        sync ->
+            epoch_mining:info("synced_block: ~p", [Block]),
+            handle_add_block(Block, State, block_synced);
+        _Other ->
+            case aec_blocks:is_key_block(Block) of
+                true ->
+                    epoch_mining:info("post_block: ~p", [Block]),
+                    handle_add_block(Block, State, block_received);
+                false ->
+                    epoch_mining:info("post_micro_block: ~p", [Block]),
+                    handle_add_block(Block, State, micro_block_received)
+            end
     end.
 
 handle_mined_block(Block, State) ->

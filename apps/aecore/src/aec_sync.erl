@@ -793,7 +793,7 @@ add_blocks([]) ->
 add_blocks([VBlock | Rest]) ->
     case check_block(VBlock, #{}) of
         {ok, VBlock2} ->
-            try aec_conductor:add_synced_block(VBlock2) of
+            try aec_conductor:post_block(VBlock2) of
                 ok -> add_blocks(Rest);
                 Err -> Err
             catch _:_ ->
