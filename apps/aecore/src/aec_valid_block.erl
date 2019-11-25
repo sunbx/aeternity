@@ -123,15 +123,20 @@
          origin
         }).
 
--opaque block() :: #valid_block{}.
+-type block() :: #valid_block{}.
+-type origin() :: sync | gossip | http | node.
+-type process() :: ?SYNC | ?PEER_CONN | ?HTTP | ?CONDUCTOR.
+-type env() :: map().
 
 %% API
 
+-spec new(aec_blocks:block(), origin()) -> block().
 new(Block, Origin) ->
     #valid_block{block  = Block,
                  checks = block_checks(aec_blocks:type(Block), Origin),
                  origin = Origin}.
 
+-spec check(block(), process(), env()) -> {ok, block()} | {error, term()}.
 check(#valid_block{block = Block, checks = Checks} = VBlock, Proc, Env) ->
     #{header := HeaderChecks} = Checks,
     Env2 = header_env(Block, Env),
@@ -159,6 +164,7 @@ check(#valid_block{block = Block, checks = Checks} = VBlock, Proc, Env) ->
             Err
     end.
 
+-spec check_all(block(), env()) -> {ok, block()} | {error, term()}.
 check_all(#valid_block{checks = Checks} = VBlock, Env) ->
     Procs = get_procs(Checks),
     check_all(VBlock, Procs, Env).
@@ -177,12 +183,15 @@ check_all(VBlock, [Proc | Rest], Env) ->
 pending_checks(#valid_block{checks = #{header := #{pending := HChecks}}}) ->
     HChecks.
 
+-spec block(block()) -> aec_blocks:block().
 block(#valid_block{block = Block}) ->
     Block.
 
+-spec set_txs([aetx_sign:signed_tx()], block()) -> block().
 set_txs(Txs, #valid_block{block = Block} = VBlock) ->
     VBlock#valid_block{block = aec_blocks:set_txs(Block, Txs)}.
 
+-spec origin(block()) -> origin().
 origin(#valid_block{origin = Origin}) ->
     Origin.
 
