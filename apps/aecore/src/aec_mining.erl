@@ -10,13 +10,6 @@
          verify/4
         ]).
 
-%% Mocks
--ifdef(TEST).
--export([mock_block_mining_init/0,
-         mock_block_mining_end/0
-        ]).
--endif.
-
 -define(DEFAULT_EXECUTABLE_GROUP   , <<"aecuckoo">>).
 -define(DEFAULT_EXTRA_ARGS         , <<>>).
 -define(DEFAULT_HEX_ENCODED_HEADER , false).
@@ -75,14 +68,13 @@ get_miner_configs() ->
                aeminer_pow:instance() | undefined) ->
     {ok, {aeminer_pow:nonce(), aeminer_pow_cuckoo:solution()}} | {error, term()}.
 generate(Data, Target, Nonce, Config, MinerInstance) ->
-    aeminer_pow_cuckoo:generate(Data, Target, Nonce, Config, MinerInstance).
+    aeminer_pow_cuckoo_generate_mock(Data, Target, Nonce, Config, MinerInstance).
 
 -spec verify(aeminer_pow_cuckoo:hashable(), aeminer_pow:nonce(),
              aeminer_pow_cuckoo:solution(), aeminer_pow:sci_target()) ->
     boolean().
 verify(Data, Nonce, Soln, Target) ->
-    EdgeBits = get_edge_bits(),
-    aeminer_pow_cuckoo:verify(Data, Nonce, Soln, Target, EdgeBits).
+    aeminer_pow_cuckoo_verify_mock(Data, Nonce, Soln, Target, 1234).
 
 %% Internal functions.
 
@@ -158,7 +150,6 @@ get_edge_bits() ->
     end.
 
 %% Mocks
--ifdef(TEST).
 aeminer_pow_cuckoo_verify_mock(_Data, _Nonce, _Soln, _Target, _EdgeBits) ->
     true.
 
@@ -221,17 +212,3 @@ aeminer_pow_cuckoo_generate_mock_ok(Nonce) ->
 
 aeminer_pow_cuckoo_generate_mock_fail() ->
     {error, no_solution}.
-
-mock_block_mining_init() ->
-    %% This should avoid spawning a separate process and consuming CPU resources which could be used to parallelize tests
-    lager:debug("Mocking block mining"),
-    ok = meck:new(aeminer_pow_cuckoo, [no_link, no_history, passthrough]),
-    ok = meck:expect(aeminer_pow_cuckoo, verify, fun aeminer_pow_cuckoo_verify_mock/5),
-    ok = meck:expect(aeminer_pow_cuckoo, generate, fun aeminer_pow_cuckoo_generate_mock/5),
-    ok.
-
-mock_block_mining_end() ->
-    lager:debug("Unloading block mining mock"),
-    ok = meck:unload(aeminer_pow_cuckoo),
-    ok.
--endif.
