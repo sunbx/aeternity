@@ -202,6 +202,7 @@ signers(Tx, _) ->
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#contract_call_tx{} = Tx, Trees, Env) ->
+    io:format(user, "contract_call_tx is ~p\n", [Tx]),
     %% Assert
     case aetx_env:context(Env) of
       aetx_transaction -> ok;
@@ -220,7 +221,9 @@ process(#contract_call_tx{} = Tx, Trees, Env) ->
           call_origin(Tx),
           fee(Tx),
           nonce(Tx)),
-    aeprimop:eval(Instructions, Trees, Env).
+    R = aeprimop:eval(Instructions, Trees, Env),
+    io:format(user, "Exiting contract processing\n", []),
+    R.
 
 -spec process_call_from_contract(tx(), aec_trees:trees(), aetx_env:env()) ->
                                         {ok, aect_call:call(), aec_trees:trees()}
