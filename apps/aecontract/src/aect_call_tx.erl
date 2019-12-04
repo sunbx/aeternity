@@ -202,7 +202,7 @@ signers(Tx, _) ->
 
 -spec process(tx(), aec_trees:trees(), aetx_env:env()) -> {ok, aec_trees:trees(), aetx_env:env()}.
 process(#contract_call_tx{} = Tx, Trees, Env) ->
-    io:format(user, "contract_call_tx is ~p\n", [Tx]),
+%%    CID = aeser_api_encoder:encode(contract_pubkey, aec_accounts:pubkey(Tx#contract_call_tx.contract_id)),
     %% Assert
     case aetx_env:context(Env) of
       aetx_transaction -> ok;

@@ -542,6 +542,10 @@ maybe_log(Msg, Args, aetx_contract) ->
     io:format(user, Msg, Args);
 maybe_log(_, _, _) -> ok.
 
+tx_hash(TxEnv) ->
+    {value, SigTx} = aetx_env:signed_tx(TxEnv),
+    aetx_sign:hash(SigTx).
+
 spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >= 0 ->
     {Sender1, S1}   = get_account(From, S),
     assert_account_balance(Sender1, Amount),
@@ -550,12 +554,16 @@ spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >=
     {Receiver1, S3} = ensure_account(To, S2),
     assert_payable_account(Receiver1, Mode),
     {ok, Receiver2} = aec_accounts:earn(Receiver1, Amount),
-    maybe_log("Spend from ~s to ~s amount ~p\n",
+    maybe_log("Spend from ~s to ~s amount ~p signed_tx is ~s \n",
               [aeser_api_encoder:encode(account_pubkey, From),
                aeser_api_encoder:encode(account_pubkey,
                                         aec_accounts:pubkey(Receiver1)),
-               Amount], aetx_env:context(S#state.tx_env)),
+               Amount,
+               aeser_api_encoder:encode(tx_hash, tx_hash(S#state.tx_env))],
+              aetx_env:context(S#state.tx_env)),
     put_account(Receiver2, S3).
+
+
 
 %%%-------------------------------------------------------------------
 %%% A special form of spending is to lock an amount.
