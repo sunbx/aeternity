@@ -540,8 +540,13 @@ transfer_value_op(From, To, Amount) when ?IS_HASH(From),
 
 maybe_log(TxType, State, Params, aetx_contract) ->
     TxHash = aeser_api_encoder:encode(tx_hash, tx_hash(State#state.tx_env)),
-    io:format(user, "~p TX id is ~s params ~p\n",
-              [TxType, TxHash, Params]);
+    Map = #{ tx_type => TxType,
+             tx_hash => TxHash,
+             transaction => Params },
+    Foo = jsx:encode(Map),
+    posix_queue:send(<<"/foo4">>, Foo),
+    io:format(user, "~p TX id is ~s params ~s\n",
+              [TxType, TxHash, Foo]);
 maybe_log(_, _, _, _) ->
     ok.
 
@@ -637,8 +642,8 @@ oracle_register({Pubkey, QFormat, RFormat, QFee, DeltaTTL, ABIVersion}, S) ->
               #{
                 query_fee => QFee,
                 oracle_ttl => #{ type => "delta", value => DeltaTTL },
-                query_format => "unknown", %% TODO
-                response_format => "unknown", %% TODO
+                query_format => <<"unknown">>, %% TODO
+                response_format => <<"unknown">>, %% TODO
                 account_id => aeser_api_encoder:encode(account_pubkey, Pubkey)
                },
               aetx_env:context(S#state.tx_env)),
