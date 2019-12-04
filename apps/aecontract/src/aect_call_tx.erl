@@ -221,9 +221,7 @@ process(#contract_call_tx{} = Tx, Trees, Env) ->
           call_origin(Tx),
           fee(Tx),
           nonce(Tx)),
-    R = aeprimop:eval(Instructions, Trees, Env),
-    io:format(user, "Exiting contract processing\n", []),
-    R.
+    aeprimop:eval(Instructions, Trees, Env).
 
 -spec process_call_from_contract(tx(), aec_trees:trees(), aetx_env:env()) ->
                                         {ok, aect_call:call(), aec_trees:trees()}
