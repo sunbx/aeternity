@@ -538,10 +538,10 @@ transfer_value_op(From, To, Amount) when ?IS_HASH(From),
                                          ?IS_NON_NEG_INTEGER(Amount) ->
     {spend, {From, To, Amount, transfer_value}}.
 
-maybe_log(spend, State, Params, aetx_contract) ->
+maybe_log(TxType, State, Params, aetx_contract) ->
     TxHash = aeser_api_encoder:encode(tx_hash, tx_hash(State#state.tx_env)),
-    io:format(user, "Spend TX id is ~s params ~p\n",
-              [TxHash, Params]);
+    io:format(user, "~p TX id is ~s params ~p\n",
+              [TxType, TxHash, Params]);
 maybe_log(_, _, _, _) ->
     ok.
 
@@ -563,13 +563,6 @@ spend({From, To, Amount, Mode}, #state{} = S) when is_integer(Amount), Amount >=
                                                           aec_accounts:pubkey(Receiver1)),
                  amount => Amount},
               aetx_env:context(S#state.tx_env)),
-      %% "Spend from ~s to ~s amount ~p signed_tx is ~s \n",
-      %%         [aeser_api_encoder:encode(account_pubkey, From),
-      %%          aeser_api_encoder:encode(account_pubkey,
-      %%                                   aec_accounts:pubkey(Receiver1)),
-      %%          Amount,
-      %%          aeser_api_encoder:encode(tx_hash, tx_hash(S#state.tx_env))],
-      %%         aetx_env:context(S#state.tx_env)),
     put_account(Receiver2, S3).
 
 
@@ -639,6 +632,17 @@ oracle_register({Pubkey, QFormat, RFormat, QFee, DeltaTTL, ABIVersion}, S) ->
     assert_oracle_formats(QFormat, RFormat, ABIVersion, S),
 
     AbsoluteTTL = DeltaTTL + S#state.height,
+    %%
+    maybe_log(oracle_register, S,
+              #{
+                query_fee => QFee,
+                oracle_ttl => #{ type => "delta", value => DeltaTTL },
+                query_format => "unknown", %% TODO
+                response_format => "unknown", %% TODO
+                account_id => aeser_api_encoder:encode(account_pubkey, Pubkey)
+               },
+              aetx_env:context(S#state.tx_env)),
+    %%
     try aeo_oracles:new(Pubkey, QFormat, RFormat, QFee, AbsoluteTTL, ABIVersion) of
         Oracle -> put_oracle(Oracle, S)
     catch
@@ -657,6 +661,14 @@ oracle_extend({PubKey, DeltaTTL}, S) ->
     [runtime_error(zero_relative_oracle_extension_ttl) || DeltaTTL =:= 0],
     {Oracle, S1} = get_oracle(PubKey, account_is_not_an_active_oracle, S),
     Oracle1 = aeo_oracles:set_ttl(aeo_oracles:ttl(Oracle) + DeltaTTL, Oracle),
+    %%
+    maybe_log(oracle_extend, S,
+              #{
+                oracle_id => aeser_api_encoder:encode(oracle_pubkey, PubKey),
+                oracle_ttl => #{ type => "delta", value => DeltaTTL }
+               },
+              aetx_env:context(S#state.tx_env)),
+    %%
     put_oracle(Oracle1, S1).
 
 %%%-------------------------------------------------------------------
@@ -694,18 +706,30 @@ oracle_query_op(OracleId, SenderPubkey, SenderNonce, Query, QueryFee,
 
 oracle_query({OracleId, SenderPubkey, SenderNonce,
               Query, QueryFee, QTTL, RTTL, Return}, S) ->
-    case aeser_id:specialize(OracleId) of
-        {oracle, OraclePubkey} ->
-            oracle_query({OraclePubkey, OracleId, SenderPubkey, SenderNonce,
-                          Query, QueryFee, QTTL, RTTL, Return}, S);
-        {name, NameHash} ->
-            S#state.protocol >= ?IRIS_PROTOCOL_VSN orelse
-                runtime_error(oracle_query_by_name_hash_not_available_at_protocol),
-            {OraclePubkey, S1} = int_resolve_name(NameHash, <<"oracle_pubkey">>, S),
-            oracle_query({OraclePubkey, OracleId, SenderPubkey, SenderNonce,
-                          Query, QueryFee, QTTL, RTTL, Return}, S1)
-    end;
-
+    Result = case aeser_id:specialize(OracleId) of
+                 {oracle, OraclePubkey} ->
+                     oracle_query({OraclePubkey, OracleId, SenderPubkey, SenderNonce,
+                                   Query, QueryFee, QTTL, RTTL, Return}, S);
+                 {name, NameHash} ->
+                     S#state.protocol >= ?IRIS_PROTOCOL_VSN orelse
+                         runtime_error(oracle_query_by_name_hash_not_available_at_protocol),
+                     {OraclePubkey, S1} = int_resolve_name(NameHash, <<"oracle_pubkey">>, S),
+                     oracle_query({OraclePubkey, OracleId, SenderPubkey, SenderNonce,
+                                   Query, QueryFee, QTTL, RTTL, Return}, S1)
+             end,
+    %%
+    maybe_log(oracle_query, S,
+              #{
+                query_fee => QueryFee,
+                query => "unsupported at this time", %% TODO
+                query_ttl => #{ type => "delta", value => QTTL },
+                response_ttl => #{ type => "delta", value => RTTL },
+                oracle_id => aeser_api_encoder:encode(oracle_pubkey, OraclePubkey),
+                sender_id => aeser_api_encoder:encode(account_pubkey, SenderPubkey)
+               },
+              aetx_env:context(S#state.tx_env)),
+    %%
+    Result;
 oracle_query({OraclePubkey, OriginalIdent, SenderPubkey, SenderNonce,
              Query, QueryFee, QTTL, RTTL, Return}, S) when is_binary(OraclePubkey) ->
     {Oracle, S1} = get_oracle(OraclePubkey, oracle_does_not_exist, S),
@@ -714,7 +738,7 @@ oracle_query({OraclePubkey, OriginalIdent, SenderPubkey, SenderNonce,
     assert_oracle_format_match(Oracle, aeo_oracles:query_format(Oracle), Query),
     AbsoluteQTTL = S#state.height + QTTL,
     ResponseTTL = {delta, RTTL},
-    try aeo_query:new(OriginalIdent, SenderPubkey, SenderNonce, Query, QueryFee,
+    Result = try aeo_query:new(OriginalIdent, SenderPubkey, SenderNonce, Query, QueryFee,
                       AbsoluteQTTL, ResponseTTL) of
         QueryObject0 ->
             QueryObjectId = case aetx_env:ga_nonce(S#state.tx_env, SenderPubkey) of
@@ -740,7 +764,20 @@ oracle_query({OraclePubkey, OriginalIdent, SenderPubkey, SenderNonce,
         error:{illegal,_Field,_X} = Err ->
             lager:debug("Failed oracle query: ~p", [Err]),
             runtime_error(illegal_oracle_query_spec)
-    end.
+    end,
+    %%
+    maybe_log(oracle_query, S,
+              #{
+                query_fee => QueryFee,
+                query => "unsupported at this time", %% TODO
+                query_ttl => #{ type => "delta", value => QTTL },
+                response_ttl => #{ type => "delta", value => RTTL },
+                oracle_id => aeser_api_encoder:encode(oracle_pubkey, OraclePubkey),
+                sender_id => aeser_api_encoder:encode(account_pubkey, SenderPubkey)
+               },
+              aetx_env:context(S#state.tx_env)),
+    %%
+    Result.
 
 %%%-------------------------------------------------------------------
 
@@ -765,6 +802,17 @@ oracle_respond({OraclePubkey, QueryId, Response, RTTL}, S) ->
     assert_query_is_open(QueryObject),
     Height = S#state.height,
     QueryObject1 = aeo_query:add_response(Height, Response, QueryObject),
+    %%
+    maybe_log(oracle_response, S,
+              #{
+                response => "unsupported at this time", %% TODO
+                response_ttl => #{ type => "delta", value => RTTL },
+                oracle_id => aeser_api_encoder:encode(oracle_pubkey, OraclePubkey),
+                query_id => aeser_api_encoder:encode(oracle_query, QueryId)
+               },
+              aetx_env:context(S#state.tx_env)),
+    %%
+
     put_oracle_query(QueryObject1, S2).
 
 %%%-------------------------------------------------------------------
@@ -814,6 +862,17 @@ name_claim({AccountPubkey, PlainName, NameSalt, NameFee, PreclaimDelta}, S) ->
     S0 = lock_namefee(if BidTimeout == 0 -> lock;
                         true -> spend
                      end, AccountPubkey, NameFee, S),
+    %%
+    maybe_log(name_claim, S,
+              #{
+                fee => NameFee,
+                name => NameAscii,
+                name_fee => NameFee,
+                name_salt => NameSalt,
+                account_id => aeser_api_encoder:encode(account_pubkey, AccountPubkey)
+               },
+              aetx_env:context(S#state.tx_env)),
+    %%
     case aec_governance:name_claim_bid_timeout(NameAscii, S#state.protocol) of
         0 ->
             %% No auction for this name, preclaim delta suffices
@@ -892,6 +951,15 @@ name_revoke({AccountPubkey, NameHash, ProtectedDeltaTTL}, S) ->
     assert_name_owner(Name, AccountPubkey),
     assert_name_claimed(Name),
     Name1 = aens_names:revoke(Name, ProtectedDeltaTTL, S1#state.height),
+    %%
+    maybe_log(name_revoke, S,
+              #{
+                name_id => aeser_api_encoder:encode(name, NameHash),
+                account_id => aeser_api_encoder:encode(account_pubkey, AccountPubkey)
+               },
+              aetx_env:context(S#state.tx_env)),
+    %%
+
     put_name(Name1, S1).
 
 %%%-------------------------------------------------------------------
@@ -915,6 +983,15 @@ name_transfer({OwnerPubkey, RecipientType, RecipientHash, NameHash}, S) ->
             name    -> int_resolve_name(RecipientHash, <<"account_pubkey">>, S1)
         end,
     Name1 = aens_names:transfer_to(RecipientPubkey, Name),
+    %%
+    maybe_log(name_transfer, S,
+              #{
+                name_id => aeser_api_encoder:encode(name, NameHash),
+                account_id => aeser_api_encoder:encode(account_pubkey, OwnerPubkey),
+                recipient_id => aeser_api_encoder:encode(account_pubkey, RecipientHash)
+               },
+              aetx_env:context(S#state.tx_env)),
+    %%
     put_name(Name1, S2).
 
 %%%-------------------------------------------------------------------
@@ -950,6 +1027,17 @@ name_update({OwnerPubkey, NameHash, TTL, ClientTTL, Pointers}, S) ->
     assert_name_owner(Rec, OwnerPubkey),
     assert_name_claimed(Rec),
     Rec1 = aens_names:update(Rec, TTL1, ClientTTL1, Pointers1),
+    %%
+    maybe_log(name_update, S,
+              #{
+                name_id => aeser_api_encoder:encode(name, NameHash),
+                name_ttl => TTL1,
+                account_id => aeser_api_encoder:encode(account_pubkey, OwnerPubkey),
+                pointers => Pointers
+               },
+              aetx_env:context(S#state.tx_env)),
+    %%
+
     put_name(Rec1, S1).
 
 ttl_or_from({relative_ttl, _} = TTL, _, S) -> ttl_val(TTL, S);
