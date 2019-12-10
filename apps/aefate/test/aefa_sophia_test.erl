@@ -24,13 +24,15 @@ compile_contracts(Contracts, Options) ->
 
 make_contract(Name) -> aeb_fate_data:make_contract(pad_contract_name(Name)).
 
+-define(HEIGHT, 170000).
+
 dummy_spec(Cache, Stores) ->
     Caller = <<123:256>>,
     #{ trees     => dummy_trees(Caller, Cache, Stores),
        caller    => Caller,
        origin    => Caller,
        gas_price => 1,
-       tx_env    => aetx_env:tx_env(1) }.
+       tx_env    => aetx_env:tx_env(?HEIGHT) }.
 
 dummy_trees(Caller, Cache, Stores) ->
     %% All contracts and the caller must have accounts
