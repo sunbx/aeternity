@@ -26,6 +26,7 @@
 -export([gossiped_height/2,
          block_presence/1,
          pow/1,
+         genesis_height/1,
          prev_header/2,
          protocol/2,
          chain_connection/1,
@@ -51,6 +52,7 @@
 
 -define(KEY_HEADER_SYNC_CHECKS,
         [{block_presence,   [header],              [?PEER_CONN]},
+         {genesis_height,   [header],              [?PEER_CONN]},
          {pow,              [header],              [?PEER_CONN]},
          {max_time,         [header],              [?PEER_CONN]},
          {prev_header,      [header, prev_header], [?PEER_CONN, ?SYNC]},
@@ -62,6 +64,7 @@
 -define(KEY_HEADER_GOSSIP_CHECKS,
         [{gossiped_height,  [header, sync_height], [?PEER_CONN]},
          {delta_height,     [header, top_header],  [?PEER_CONN]},
+         {genesis_height,   [header],              [?PEER_CONN]},
          {pow,              [header],              [?PEER_CONN]},
          {block_presence,   [header],              [?PEER_CONN]},
          {chain_connection, [header],              [?PEER_CONN]},
@@ -73,6 +76,7 @@
 
 -define(KEY_HEADER_HTTP_CHECKS,
         [{delta_height,     [header, top_header],  [?HTTP]},
+         {genesis_height,   [header],              [?HTTP]},
          {pow,              [header],              [?HTTP]},
          {block_presence,   [header],              [?HTTP]},
          {chain_connection, [header],              [?HTTP]},
@@ -84,6 +88,7 @@
 
 -define(MICRO_HEADER_SYNC_CHECKS,
         [{block_presence,   [header],                  [?PEER_CONN]},
+         {genesis_height,   [header],                  [?PEER_CONN]},
          {max_time,         [header],                  [?PEER_CONN]},
          {prev_header,      [header, prev_header],     [?PEER_CONN, ?SYNC]},
          {protocol,         [header, prev_key_header], [?PEER_CONN, ?SYNC]},
@@ -99,6 +104,7 @@
 -define(MICRO_HEADER_GOSSIP_CHECKS,
         [{gossiped_height,  [header, sync_height],     [?PEER_CONN]},
          {block_presence,   [header],                  [?PEER_CONN]},
+         {genesis_height,   [header],                  [?PEER_CONN]},
          {chain_connection, [header],                  [?PEER_CONN]},
          {delta_height,     [header, top_header],      [?PEER_CONN]},
          {prev_header,      [header, prev_header],     [?PEER_CONN]},
@@ -404,6 +410,12 @@ delta_height(Header, TopHeader) ->
     case Height >= aec_headers:height(TopHeader) - MaxDelta of
         true  -> ok;
         false -> {error, too_far_below_top}
+    end.
+
+genesis_height(Header) ->
+    case aec_headers:height(Header) =/= aec_block_genesis:height() of
+        true  -> ok;
+        false -> {error, genesis_height}
     end.
 
 prev_header(Header, PrevHeader) ->
