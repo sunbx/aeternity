@@ -1713,7 +1713,8 @@ sophia_gas(Cfg) ->
     RomaHeight    = maps:get(minerva, ForkHeights) - 1,
     MinervaHeight = maps:get(fortuna, ForkHeights) - 1,
     FortunaHeight = maps:get(lima, ForkHeights) - 1,
-    LimaHeight    = maps:get(lima, ForkHeights),
+    LimaHeight    = maps:get(iris, ForkHeights) - 1,
+    IrisHeight    = maps:get(iris, ForkHeights),
     Spec          = #{amount => 0, gas_price => MinGasPrice,
                       fee => 5000000 * MinGasPrice, return_gas_used => true},
     RomaSpec      = Spec#{height => RomaHeight,    vm_version => ?VM_AEVM_SOPHIA_1},
@@ -1721,6 +1722,7 @@ sophia_gas(Cfg) ->
     FortunaSpec   = Spec#{height => FortunaHeight, vm_version => ?VM_AEVM_SOPHIA_3},
     LimaSpec      = Spec#{height => LimaHeight,    vm_version => ?VM_AEVM_SOPHIA_4},
     LimaSpecFate  = Spec#{height => LimaHeight,    vm_version => ?VM_FATE_SOPHIA_1, abi_version => ?ABI_FATE_SOPHIA_1},
+    IrisSpecFate  = Spec#{height => IrisHeight,    vm_version => ?VM_FATE_SOPHIA_2, abi_version => ?ABI_FATE_SOPHIA_1},
 
     SophiaVsn = get('$sophia_version'),
     put('$sophia_version', ?SOPHIA_ROMA),
@@ -1743,6 +1745,10 @@ sophia_gas(Cfg) ->
     {ok, ICode5}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_LIMA),
     {ok, ACode5}  = compile_contract_vsn(authorize_nonce, ?CONTRACT_SERIALIZATION_VSN_LIMA),
     {ok, SCode5}  = compile_contract_vsn(simple_state, ?CONTRACT_SERIALIZATION_VSN_LIMA),
+    put('$sophia_version', ?SOPHIA_IRIS_FATE),
+    {ok, ICode6}  = compile_contract_vsn(identity, ?CONTRACT_SERIALIZATION_VSN_LIMA),
+    {ok, ACode6}  = compile_contract_vsn(authorize_nonce, ?CONTRACT_SERIALIZATION_VSN_LIMA),
+    {ok, SCode6}  = compile_contract_vsn(simple_state, ?CONTRACT_SERIALIZATION_VSN_LIMA),
     put('$sophia_version', SophiaVsn),
 
     %% Create contracts on all sides of the fork
@@ -1762,21 +1768,24 @@ sophia_gas(Cfg) ->
     {CILimaF, GILimaF}     = ?call(create_contract_with_code, Acc, ICode5, {}, LimaSpecFate),
     {CALimaF, GALimaF}     = ?call(create_contract_with_code, Acc, ACode5, {}, LimaSpecFate),
     {CSLimaF, GSLimaF}     = ?call(create_contract_with_code, Acc, SCode5, {1}, LimaSpecFate),
+    {CIIrisF, GIIrisF}     = ?call(create_contract_with_code, Acc, ICode6, {}, IrisSpecFate),
+    {CAIrisF, GAIrisF}     = ?call(create_contract_with_code, Acc, ACode6, {}, IrisSpecFate),
+    {CSIrisF, GSIrisF}     = ?call(create_contract_with_code, Acc, SCode6, {1}, IrisSpecFate),
 
     ct:pal("Gas for init - identity:\n"
            "Roma:     ~p\n" "Minerva:  ~p\n"
            "Fortuna:  ~p\n" "LimaAEVM: ~p\n\n"
-           "LimaFate: ~p", [GIRoma, GIMinerva, GIFortuna, GILima, GILimaF]),
+           "LimaFate: ~p\n" "IrisFate: ~p", [GIRoma, GIMinerva, GIFortuna, GILima, GILimaF, GIIrisF]),
 
     ct:pal("Gas for init - authorize_nonce:\n"
            "Roma:     ~p\n" "Minerva:  ~p\n"
            "Fortuna:  ~p\n" "LimaAEVM: ~p\n\n"
-           "LimaFate: ~p", [GARoma, GAMinerva, GAFortuna, GALima, GALimaF]),
+           "LimaFate: ~p\n" "IrisFate: ~p", [GARoma, GAMinerva, GAFortuna, GALima, GALimaF, GAIrisF]),
 
     ct:pal("Gas for init - simple_state:\n"
            "Roma:     ~p\n" "Minerva:  ~p\n"
            "Fortuna:  ~p\n" "LimaAEVM: ~p\n\n"
-           "LimaFate: ~p", [GSRoma, GSMinerva, GSFortuna, GSLima, GSLimaF]),
+           "LimaFate: ~p\n" "IrisFate: ~p", [GSRoma, GSMinerva, GSFortuna, GSLima, GSLimaF, GSIrisF]),
 
     %% Calling identity
     put('$abi_version', ?ABI_AEVM_SOPHIA_1),
@@ -1808,7 +1817,13 @@ sophia_gas(Cfg) ->
                  {N, Gas}
              end || N <- [-100, 0, 25, 50, 64, 100, 500, 1000] ],
 
-    ct:pal("Calling identity FATE:\n~s\n", [[io_lib:format("main(~p): ~p\n", [N, G]) || {N, G} <- GILF ]]),
+    ct:pal("Calling identity Lima FATE:\n~s\n", [[io_lib:format("main(~p): ~p\n", [N, G]) || {N, G} <- GILF ]]),
+    GILI = [ begin
+                 {_, Gas} = ?call(call_contract, Acc, CIIrisF, main, word, {N}, IrisSpecFate),
+                 {N, Gas}
+             end || N <- [-100, 0, 25, 50, 64, 100, 500, 1000] ],
+
+    ct:pal("Calling identity Iris FATE:\n~s\n", [[io_lib:format("main(~p): ~p\n", [N, G]) || {N, G} <- GILI ]]),
 
     %% Calling check
     put('$abi_version', ?ABI_AEVM_SOPHIA_1),
@@ -1842,7 +1857,13 @@ sophia_gas(Cfg) ->
                   {N, Gas}
               end || N <- lists:seq(0, 100) ],
 
-    ct:pal("Calling check FATE:\n~s\n", [[io_lib:format("check(~p): ~p\n", [N, G]) || {N, G} <- [hd(GS1LF), lists:last(GS1LF)]]]),
+    ct:pal("Calling check Lima FATE:\n~s\n", [[io_lib:format("check(~p): ~p\n", [N, G]) || {N, G} <- [hd(GS1LF), lists:last(GS1LF)]]]),
+    GS1LI = [ begin
+                  {_, Gas} = ?call(call_contract, Acc, CSIrisF, check, bool, {N}, IrisSpecFate),
+                  {N, Gas}
+              end || N <- lists:seq(0, 100) ],
+
+    ct:pal("Calling check Iris FATE:\n~s\n", [[io_lib:format("check(~p): ~p\n", [N, G]) || {N, G} <- [hd(GS1LI), lists:last(GS1LI)]]]),
 
     %% Calling n_checks
     put('$abi_version', ?ABI_AEVM_SOPHIA_1),
@@ -1874,7 +1895,13 @@ sophia_gas(Cfg) ->
                   Gas
               end || _N <- lists:seq(0, 1) ],
 
-    ct:pal("Calling check_nonce FSTE:\n~s\n", [[io_lib:format("n_checks(): ~p\n", [G]) || G <- lists:usort(GS2LF) ]]),
+    ct:pal("Calling check_nonce Lima FATE:\n~s\n", [[io_lib:format("n_checks(): ~p\n", [G]) || G <- lists:usort(GS2LF) ]]),
+    GS2LI = [ begin
+                  {_, Gas} = ?call(call_contract, Acc, CSIrisF, n_checks, word, {}, IrisSpecFate),
+                  Gas
+              end || _N <- lists:seq(0, 1) ],
+
+    ct:pal("Calling check_nonce Iris FATE:\n~s\n", [[io_lib:format("n_checks(): ~p\n", [G]) || G <- lists:usort(GS2LI) ]]),
 
     %% Calling nonce_correct
     put('$abi_version', ?ABI_AEVM_SOPHIA_1),
@@ -1905,7 +1932,12 @@ sophia_gas(Cfg) ->
                   {_, Gas} = ?call(call_contract, Acc, CALimaF, nonce_correct, bool, {N}, LimaSpecFate),
                   {N, Gas}
               end || N <- lists:seq(1, 100) ],
-    ct:pal("Calling nonce_correct FATE:\n~s\n", [[io_lib:format("main(~p): ~p\n", [N, G]) || {N, G} <- [hd(GA3LF), lists:last(GA3LF)]]]),
+    ct:pal("Calling nonce_correct Lima FATE:\n~s\n", [[io_lib:format("main(~p): ~p\n", [N, G]) || {N, G} <- [hd(GA3LF), lists:last(GA3LF)]]]),
+    GA3LI = [ begin
+                  {_, Gas} = ?call(call_contract, Acc, CAIrisF, nonce_correct, bool, {N}, IrisSpecFate),
+                  {N, Gas}
+              end || N <- lists:seq(1, 100) ],
+    ct:pal("Calling nonce_correct Iris FATE:\n~s\n", [[io_lib:format("main(~p): ~p\n", [N, G]) || {N, G} <- [hd(GA3LI), lists:last(GA3LI)]]]),
 
     ?assertEqual(1, 2),
     ok.
