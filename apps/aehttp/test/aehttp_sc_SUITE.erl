@@ -43,6 +43,7 @@
     sc_ws_leave_reestablish_wrong_fsm_id/1,
     sc_ws_leave_reestablish_responder_stays/1,
     sc_ws_leave_reconnect/1,
+    sc_ws_leave_reconnect_before_open/1,
     sc_ws_ping_pong/1,
     sc_ws_opening_ping_pong/1,
     sc_ws_deposit/1,
@@ -168,7 +169,8 @@ all() -> [{group, plain}, {group, aevm}, {group, fate}].
 
 groups() ->
     [{plain, [],
-      [ sc_ws_broken_open_params,
+      [ sc_ws_leave_reconnect_before_open,%%DELETEME 
+        sc_ws_broken_open_params,
         sc_ws_timeout_open,
         sc_ws_min_depth_not_reached_timeout,
         sc_ws_min_depth_is_modifiable,
@@ -188,6 +190,7 @@ groups() ->
         sc_ws_leave_reestablish_wrong_fsm_id,
         sc_ws_leave_reestablish_responder_stays,
         sc_ws_leave_reconnect,
+        sc_ws_leave_reconnect_before_open,
         sc_ws_reconnect_early,
         {group, force_progress},
         {group, with_open_channel},
@@ -873,9 +876,12 @@ make_msg_round(SenderPid, SenderPubkey, ReceiverPid, ReceiverPubkey, Msg, Config
     ok.
 
 channel_send_conn_open_infos(RConnPid, IConnPid, Config) ->
-    {ok, _, #{<<"event">> := <<"channel_open">>}} = wait_for_channel_event(RConnPid, info, Config),
-    {ok, _, #{<<"event">> := <<"channel_accept">>}} = wait_for_channel_event(IConnPid, info, Config),
-    ok.
+    {ok, _, #{ <<"event">> := <<"channel_open">>
+             , <<"temporary_channel_id">> := TemporaryId
+             }} = wait_for_channel_event(RConnPid, info, Config),
+    {ok, _, #{ <<"event">> := <<"channel_accept">>
+             , <<"temporary_channel_id">> := TemporaryId }} = wait_for_channel_event(IConnPid, info, Config),
+    {ok, TemporaryId}.
 
 channel_send_locking_infos(IConnPid, RConnPid, Config) ->
     {ok, #{channel_id := ChId,
@@ -3821,6 +3827,62 @@ sc_ws_leave_reconnect(Config0) ->
     ct:log("Config = ~p", [Config]),
     ct:log("*** Leaving channel ***", []),
     Config1 = [{responder_leaves, false}|Config],
+    ct:log("Config1 = ~p", [Config1]),
+    ReestablishOptions = sc_ws_leave_(Config1),
+    ct:log("ReestablishOpts = ~p", [ReestablishOptions]),
+    ct:log("*** Testing invalid reconneciton requests ***", []),
+    sc_ws_fsm_id_errors([initiator], ReestablishOptions, Config),
+    ct:log("*** Reconnecting ... ***", []),
+    Config2 = reconnect_client_(ReestablishOptions, initiator,
+                                [{reconnect_scenario, reestablish} | Config1]),
+    ct:log("*** Verifying that channel is operational ***", []),
+    ok = sc_ws_update_(Config2),
+    ct:log("*** Closing ... ***", []),
+    ok = sc_ws_close_(Config2).
+
+sc_ws_leave_reconnect_before_open(Config) ->
+    ct:log("opening channel", []),
+    ct:log("Config = ~p", [Config]),
+    #{initiator := #{pub_key := IPubkey, priv_key := IPrivkey},
+      responder := #{pub_key := RPubkey}} = proplists:get_value(participants, Config),
+    IAmt = 70000 * aec_test_utils:min_gas_price(),
+    RAmt = 40000 * aec_test_utils:min_gas_price(),
+
+    ChannelOpts = channel_options(IPubkey, RPubkey, IAmt, RAmt,
+                                  #{responder_opts => #{keep_running => true}}, Config),
+    {IChanOpts, RChanOpts} = special_channel_opts(ChannelOpts),
+    ct:log("IChanOpts = ~p~n"
+           "RChanOpts = ~p~n", [IChanOpts, RChanOpts]),
+    %% We need to register for some events as soon as possible - otherwise a race may occur where
+    %% some fsm messages are missed
+    TestEvents = sc_ws_open_events(),
+    {ok, IConnPid, IFsmId} = channel_ws_start(initiator,
+                                              maps:put(host, <<"localhost">>, IChanOpts),
+                                              Config, TestEvents, default_dir),
+
+    ct:log("initiator spawned", []),
+
+    {ok, RConnPid, RFsmId} = channel_ws_start(responder, RChanOpts, Config,
+                                              TestEvents, default_dir),
+    ct:log("responder spawned", []),
+
+    {ok, TemporaryId} = channel_send_conn_open_infos(RConnPid, IConnPid, Config),
+    ChannelClients = #{ channel_id => TemporaryId
+                      , initiator  => IConnPid
+                      , initiator_fsm_id => IFsmId
+                      , responder  => RConnPid
+                      , responder_fsm_id => RFsmId},
+
+    Config1 = [{channel_clients, ChannelClients},
+               {channel_start_amounts, #{ initiator => IAmt
+                                        , responder => RAmt }},
+               {channel_options, ChannelOpts} | Config],
+
+    #{ tx := CrTx
+     , updates := Updates } = channel_sign_tx(IPubkey, IConnPid, IPrivkey, <<"channels.initiator_sign">>, Config),
+    {ok, _, #{<<"event">> := <<"funding_created">>}} = wait_for_channel_event(RConnPid, info, Config),
+
+    ct:log("*** Leaving channel ***", []),
     ct:log("Config1 = ~p", [Config1]),
     ReestablishOptions = sc_ws_leave_(Config1),
     ct:log("ReestablishOpts = ~p", [ReestablishOptions]),

@@ -429,8 +429,8 @@ read_channel_options(Params) ->
     ReadMap = sc_ws_utils:readmap_f(Params),
     ReadTimeout = ReadMap(timeouts, <<"timeout">>, #{type => integer,
                                                      mandatory => false}),
-    ReadReport = ReadMap(report, <<"report">>, #{type => boolean,
-                                                     mandatory => false}),
+    ReadReport = ReadMap(report, <<"report">>, #{ type => boolean
+                                                , mandatory => false}),
     ReadBHDelta = ReadMap(block_hash_delta, <<"bh_delta">>, #{ type => integer
                                                             , mandatory => false }),
     OnChainOpts =

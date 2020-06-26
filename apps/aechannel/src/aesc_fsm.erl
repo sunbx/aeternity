@@ -2741,7 +2741,11 @@ meta_updates(Opts) when is_map(Opts) ->
 
 send_leave_msg(#data{ on_chain_id = ChId
                     , session     = Session} = Data) ->
-    Msg = #{ channel_id => ChId },
+    Id =  case ChId of
+              undefined -> Data#data.channel_id;
+              _ -> ChId
+          end,
+    Msg = #{ channel_id => Id },
     aesc_session_noise:leave(Session, Msg),
     log(snd, ?LEAVE, Msg, Data).
 
@@ -3345,6 +3349,7 @@ report_with_notice(Tag, Info, Notice, D) ->
                                  , notice => Notice
                                  , info   => Info }, D).
 
+-spec report(report_tag(), report_msg(), #data{}) -> #data{}.
 report(Tag, Info, D) ->
     report_info(do_rpt(Tag, D), #{ type => report
                                  , tag  => Tag
@@ -3371,8 +3376,12 @@ maybe_send_rpt(false, _, Msg) ->
     lager:debug("No client. Msg = ~p", [Msg]),
     ok.
 
-rpt_message(Msg, #data{on_chain_id = undefined}) ->
+rpt_message(Msg, #data{ on_chain_id = undefined
+                      , channel_id = undefined }) ->
     Msg;
+rpt_message(Msg, #data{ on_chain_id = undefined
+                      , channel_id = TempChannelPubKey } = D) ->
+    maybe_add_fsm_id(Msg#{temporary_channel_id => TempChannelPubKey}, D);
 rpt_message(Msg, #data{on_chain_id = OnChainId} = D) ->
     maybe_add_fsm_id(Msg#{channel_id => OnChainId}, D).
 
@@ -4530,7 +4539,7 @@ handle_call_(open, {upd_withdraw, #{amount := Amt} = Opts}, From,
             gen_statem:reply(From, Error),
             keep_state(D)
     end;
-handle_call_(open, leave, From, #data{} = D) ->
+handle_call_(_open, leave, From, #data{} = D) ->
     D1 = send_leave_msg(D),
     gen_statem:reply(From, ok),
     next_state(awaiting_leave_ack, D1);

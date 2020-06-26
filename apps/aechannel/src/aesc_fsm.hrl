@@ -224,6 +224,47 @@
                    , responder              := aec_keys:pubkey()
                    }.
 
+-opaque report_tag() :: info
+                      | conflict
+                      | update
+                      | leave
+                      | error
+                      | on_chain_tx
+                      | debug
+                      | message.
+-opaque report_msg() :: map()
+                      | binary()
+                      | aetx_sign:signed_tx()
+                      | peer_disconnected
+                      | aborted_update
+                      | {'fsm_up',aesc_fsm_id:wrapper()}
+                      | timeout
+                      | not_create_tx
+                      | bad_state_hash
+                      | bad_signature
+                      | closed_confirmed
+                      | close_mutual
+                      | {died, atom()}
+                      | shutdown
+                      | withdraw_locked
+                      | funding_created
+                      | funding_signed
+                      | funding_locked
+                      | channel_reestablished
+                      | withdraw_created
+                      | deposit_locked
+                      | deposit_created
+                      | update
+                      | open
+                      | closing
+                      | zombie_channel
+                      | channel_open
+                      | own_withdraw_locked
+                      | own_deposit_locked
+                      | own_funding_locked
+                      | channel_accept
+                      | {'log',[tuple()]}.
+
 -record(op_data, { signed_tx  :: aetx_sign:signed_tx()
                  , updates    :: [aesc_offchain_update:update()]
                  , block_hash :: aec_blocks:block_header_hash()

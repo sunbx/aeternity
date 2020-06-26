@@ -114,7 +114,7 @@ is_latest_signed_tx(SignedTx, #state{signed_tx = LatestSignedTx}) ->
         == aetx_sign:serialize_to_binary(LatestSignedTx).
 
 -spec check_initial_update_tx(aetx_sign:signed_tx(), [aesc_offchain_update:update()], state())
-    -> ok | {error, atom()}.
+    -> ok | {error, not_create_tx | bad_state_hash}.
 check_initial_update_tx(SignedTx, _Updates, State) ->
     {Mod, Tx} = aetx:specialize_callback(aetx_sign:innermost_tx(SignedTx)),
     Checks =

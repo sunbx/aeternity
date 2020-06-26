@@ -187,8 +187,8 @@ process_fsm_(#{type := sign,
     notify(Protocol,
            #{action  => <<"sign">>,
              tag => Tag1,
-             payload => maybe_add_fsm_id(Info, #{signed_tx => EncTx,
-                                                 updates => SerializedUpdates})},
+             payload => maybe_add_fsm_id(Info, #{ signed_tx => EncTx
+                                                , updates => SerializedUpdates})},
            ChannelId);
 process_fsm_(#{type := report,
                tag  := Tag,
@@ -220,6 +220,11 @@ maybe_add_fsm_id(#{fsm_id := FsmIdWrapper}, Msg) ->
 maybe_add_fsm_id(_, Msg) ->
     Msg.
 
+maybe_add_temporary_channel_id(#{temporary_channel_id := TempChId}, Msg) ->
+    Msg#{temporary_channel_id => aeser_api_encoder:encode(channel, TempChId)};
+maybe_add_temporary_channel_id(_, Msg) ->
+    Msg.
+
 event_to_payload(Tag, Event, Msg, Mod) ->
     case {Tag, Event} of
         {info, {died, _}} -> #{event => <<"died">>};
@@ -227,7 +232,9 @@ event_to_payload(Tag, Event, Msg, Mod) ->
             #{ event => <<"fsm_up">>
              , fsm_id => aesc_fsm_id:retrieve_for_client(FsmIdWrapper)};
         {info, _} when is_atom(Event) ->
-            maybe_add_fsm_id(Msg, #{event => atom_to_binary(Event, utf8)});
+            Payload = maybe_add_temporary_channel_id(Msg,
+                                                     #{event => atom_to_binary(Event, utf8)}),
+            maybe_add_fsm_id(Msg, Payload);
         {info, #{event := _} = Info} ->
             Info;
         {on_chain_tx, #{tx := Tx} = Info} ->
