@@ -1,0 +1,16 @@
+{application, aehyperchains,
+ [{description, "Hybrid chain between PoW and PoS based on BitcoinNG"},
+  {vsn, {cmd, "cat ../../VERSION"}},
+  {registered, []},
+  {mod, { aehyperchains_app, []}},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, []},
+  {links, []}
+ ]}.

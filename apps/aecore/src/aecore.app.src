@@ -45,6 +45,7 @@
     aega,
     aefate,
     aeserialization,
+    aehyperchains,
     ranch
   ]},
   {env, [
