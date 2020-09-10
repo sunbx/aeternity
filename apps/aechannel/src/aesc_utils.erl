@@ -101,7 +101,7 @@ check_round_greater_than_last(Channel, Round, Type) ->
         case aesc_channels:is_last_state_forced(Channel) of
             true when Type =:= force_progress ->
                 %% last state is a force progress and an another force
-                %% progress; round must be greater than the current one
+                %% progress' round must be greater than the current one
                 ChannelRound;
             true when Type =/= force_progress ->
                 %% last state is a force progress and a co-signed transaction
@@ -137,8 +137,9 @@ check_state_hash_size(Hash) ->
 %% now be either a double signed aesc_offchain_tx, a single signed, single
 %% (MetaTx-)wrapped aesc_offchain_tx or a double wrapped aesc_offchain_tx
 -spec deserialize_payload(binary()) -> {ok, aetx_sign:signed_tx(), aesc_offchain_tx:tx()}
-                                         | {ok, last_onchain}
-                                         | {error, bad_offchain_state_type}.
+                                     | {ok, last_onchain}
+                                     | {error, bad_offchain_state_type}
+                                     | {error, payload_deserialization_failed}.
 deserialize_payload(?EMPTY_PAYLOAD) ->
     {ok, last_onchain};
 deserialize_payload(Payload) ->
@@ -201,6 +202,25 @@ censor_ws_req(Req) ->
 %%% Check payload for slash, solo close and snapshot
 %%%===================================================================
 
+-spec check_solo_close_payload(aec_keys:pubkey(), aec_keys:pubkey(),
+                               non_neg_integer(), non_neg_integer(), binary(),
+                               aec_trees:poi(), aec_trees:trees(),
+                               aetx_env:env()) ->
+    ok | {error, payload_deserialization_failed
+               | bad_offchain_state_type
+               | channel_does_not_exist
+               | account_not_found
+               | insufficient_funds
+               | account_not_peer
+               | channel_not_active
+               | wrong_channel_peers
+               | invalid_poi_hash_in_channel
+               | bad_state_channel_pubkey
+               | same_round
+               | old_round
+               | signature_check_failed
+               | wrong_channel_peers
+               | poi_amounts_change_channel_funds }.
 check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
                          PoI, Trees, Env) ->
     case get_vals([get_channel(ChannelPubKey, Trees),
@@ -226,6 +246,14 @@ check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
             aeu_validation:run(Checks)
     end.
 
+-spec check_slash_payload(aec_keys:pubkey(), aec_keys:pubkey(),
+                          non_neg_integer(), non_neg_integer(), binary(),
+                          aec_trees:poi(), aec_trees:trees(),
+                          aetx_env:env()) ->
+    ok | {error, payload_deserialization_failed
+               | bad_offchain_state_type
+               | channel_does_not_exist
+         }.
 check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
                     PoI, Trees, Env) ->
     case get_vals([get_channel(ChannelPubKey, Trees),
