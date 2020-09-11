@@ -18,7 +18,7 @@
          is_payload_valid_at_protocol/2,
          check_slash_payload/8,
          check_solo_snapshot_payload/7,
-         check_force_progress/5,
+         check_force_progress/3,
          process_solo_close/9,
          process_slash/9,
          process_force_progress/7,
@@ -213,7 +213,6 @@ censor_ws_req(Req) ->
                | insufficient_funds
                | account_not_peer
                | channel_not_active
-               | wrong_channel_peers
                | invalid_poi_hash_in_channel
                | bad_state_channel_pubkey
                | same_round
@@ -251,9 +250,20 @@ check_solo_close_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
                           aec_trees:poi(), aec_trees:trees(),
                           aetx_env:env()) ->
     ok | {error, payload_deserialization_failed
+               | slash_must_have_payload
                | bad_offchain_state_type
                | channel_does_not_exist
-         }.
+               | account_not_found
+               | insufficient_funds
+               | account_not_peer
+               | channel_not_closing
+               | invalid_poi_hash_in_channel
+               | bad_state_channel_pubkey
+               | same_round
+               | old_round
+               | signature_check_failed
+               | wrong_channel_peers
+               | poi_amounts_change_channel_funds }.
 check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
                     PoI, Trees, Env) ->
     case get_vals([get_channel(ChannelPubKey, Trees),
@@ -272,7 +282,12 @@ check_slash_payload(ChannelPubKey, FromPubKey, Nonce, Fee, Payload,
             aeu_validation:run(Checks)
     end.
 
-check_force_progress(Tx, Payload, OffChainTrees, Trees, Env) ->
+-spec check_force_progress(aesc_force_progress_tx:tx(), aec_trees:trees(),
+                          aetx_env:env()) ->
+    ok | {error, atom()}.
+check_force_progress(Tx, Trees, Env) ->
+    Payload = aesc_force_progress_tx:payload(Tx),
+    OffChainTrees = aesc_force_progress_tx:offchain_trees(Tx),
     Protocol = aetx_env:consensus_version(Env),
     ?TEST_LOG("Checking force progress:\nTx: ~p,\nPayload: ~p,\nOffChainTrees: ~p,\nHeight: ~p",
               [Tx, Payload, OffChainTrees, aetx_env:height(Env)]),
@@ -407,6 +422,20 @@ check_abi_version(#{abi := ABI} = Version, ABI, Protocol) ->
 check_abi_version(_, _, _) ->
     {error, wrong_abi_version}.
 
+-spec check_solo_snapshot_payload(aec_keys:pubkey(), aec_keys:pubkey(),
+                               non_neg_integer(), non_neg_integer(), binary(),
+                               aec_trees:trees(), aetx_env:env()) ->
+    ok | {error, payload_deserialization_failed
+               | snapshot_must_have_payload
+               | bad_offchain_state_type
+               | channel_does_not_exist
+               | account_not_found
+               | insufficient_funds
+               | account_not_peer
+               | channel_not_active
+               | same_round
+               | old_round
+               | signature_check_failed }.
 check_solo_snapshot_payload(ChannelId, FromPubKey, Nonce, Fee, Payload,
                             Trees, Env) ->
     case get_vals([aesc_utils:get_channel(ChannelId, Trees),

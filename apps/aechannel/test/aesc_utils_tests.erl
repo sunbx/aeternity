@@ -78,6 +78,7 @@ check_slash_payload_test_() ->
      , {"Payload from a missing channel",
         fun check_slash_from_a_missing_channel/0}
      , {"Fail on last_onchain", fun check_slash_payload_last_onchain/0}
+     , {"Fail on not closing channel", fun check_slash_payload_not_closing/0}
      , {"Sender does not enough tokens", fun check_slash_not_enough_funds/0}
      , {"Sender is not a peer", fun check_slash_not_a_peer/0}
      , {"Payload with wrong channel ID", fun check_slash_payload_wrong_channel_id/0}
@@ -93,7 +94,6 @@ check_slash_payload_test_() ->
      ]
     }.
 
-%%HERE
 check_solo_snapshot_payload_test_() ->
     {foreach,
      fun() ->
@@ -111,6 +111,16 @@ check_solo_snapshot_payload_test_() ->
      , {"Payload with wrong channel ID", fun check_solo_snapshot_payload_wrong_channel_id/0}
      , {"Payload with wrong signatures", fun check_solo_snapshot_payload_wrong_signatures/0}
      , {"Correct payload", fun check_solo_snapshot_payload_correct/0}
+     ]
+    }.
+
+%%HERE
+check_fp_payload_test_() ->
+    {foreach,
+     fun() ->
+         ok
+     end,
+     [ {"Deserialize broken close force progress payload", fun deserialize_broken_fp_payload/0}
      ]
     }.
 
@@ -232,10 +242,10 @@ deserialize_payload_different_type() ->
 
 deserialize_broken_close_solo_payload() ->
     FromPubKey = <<42:32/unit:8>>,
-    Trees = aec_trees:new(),
+    Trees = aec_trees:new_without_backend(),
     PoI = aec_trees:new_poi(Trees),
     Channel = new_channel(),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     ChannelPubKey = aesc_channels:pubkey(Channel),
     {error, payload_deserialization_failed} =
         aesc_utils:check_solo_close_payload(ChannelPubKey,
@@ -260,11 +270,11 @@ deserialize_broken_close_solo_payload() ->
     ok.
 
 check_solo_payload_from_a_missing_channel() ->
-    Trees = aec_trees:new(),
+    Trees = aec_trees:new_without_backend(),
     PoI = aec_trees:new_poi(Trees),
     Channel = new_channel(),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = aec_trees:new(),
+    OnChainTrees = aec_trees:new_without_backend(),
     FromPubKey = <<42:32/unit:8>>,
     {Bin, _SignedTx, _OffChainTx} = payload(#{channel_pubkey => ChannelPubKey}),
     {error, channel_does_not_exist} =
@@ -279,11 +289,11 @@ check_solo_payload_from_a_missing_channel() ->
     ok.
 
 check_solo_not_enough_funds() ->
-    Trees = aec_trees:new(),
+    Trees = aec_trees:new_without_backend(),
     PoI = aec_trees:new_poi(Trees),
     Channel = new_channel(),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     FromPubKey = <<42:32/unit:8>>,
     {Bin, _SignedTx, _OffChainTx} = payload(#{channel_pubkey => ChannelPubKey}),
     %% with non-empty payload
@@ -333,14 +343,14 @@ check_solo_not_enough_funds() ->
 check_solo_not_a_peer() ->
     Channel = new_channel(),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     FromPubKey = <<1:32/unit:8>>,
     %% From is not a participant
     Initiator = aesc_channels:initiator_pubkey(Channel),
     Responder = aesc_channels:responder_pubkey(Channel),
     true = Initiator =/= FromPubKey,
     true = Responder =/= FromPubKey,
-    Trees = aec_trees:new(),
+    Trees = aec_trees:new_without_backend(),
     PoI = aec_trees:new_poi(Trees),
     {Bin, _SignedTx, _OffChainTx} = payload(#{channel_pubkey => ChannelPubKey}),
     Amt = 100,
@@ -376,8 +386,8 @@ check_solo_already_closing(FromKey) ->
     Channel0 = new_channel(#{FromKey => FromPubKey}),
     Channel = aesc_channels:set_solo_closing(Channel0, 1234),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
-    Trees = aec_trees:new(),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
+    Trees = aec_trees:new_without_backend(),
     PoI = aec_trees:new_poi(Trees),
     {Bin, _SignedTx, _OffChainTx} = payload(#{channel_pubkey => ChannelPubKey}),
     Amt = 100,
@@ -410,13 +420,14 @@ check_solo_close_empty_payload_hash_mismatch() ->
 
 check_solo_close_empty_payload_hash_mismatch(FromKey) ->
     FromPubKey = <<1:32/unit:8>>,
-    Trees = set_account(aec_accounts:new(FromPubKey, 10), aec_trees:new()),
+    Trees = set_account(aec_accounts:new(FromPubKey, 10),
+                        aec_trees:new_without_backend()),
     PoI = aec_trees:new_poi(Trees),
     PoIHash = aec_trees:poi_hash(PoI),
     Channel = new_channel(#{ FromKey => FromPubKey
                            , state_hash => PoIHash }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     {error, wrong_channel_peers} =
@@ -440,8 +451,9 @@ check_solo_close_empty_payload_missing_accounts(FromKey) ->
     Channel = new_channel(#{ FromKey => FromPubKey
                                  , state_hash => StateHash}),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
-    Trees = set_account(aec_accounts:new(FromPubKey, 10), aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
+    Trees = set_account(aec_accounts:new(FromPubKey, 10),
+                        aec_trees:new_without_backend()),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI} = aec_trees:add_poi(accounts, FromPubKey, Trees, PoI0),
     PoIHash = aec_trees:poi_hash(PoI),
@@ -464,7 +476,8 @@ check_solo_close_empty_payload_wrong_amounts() ->
     FromPubKey = <<1:32/unit:8>>,
     OtherPeer = <<2:32/unit:8>>,
     %% set a total balance of 11
-    Trees0 = set_account(aec_accounts:new(FromPubKey, 10), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(FromPubKey, 10),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(OtherPeer, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, FromPubKey, Trees, PoI0),
@@ -477,7 +490,7 @@ check_solo_close_empty_payload_wrong_amounts() ->
                            , responder_amount => 5
                            , state_hash => PoIHash }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     {error, poi_amounts_change_channel_funds} =
@@ -495,7 +508,8 @@ check_solo_close_empty_payload_less_amounts() ->
     FromPubKey = <<1:32/unit:8>>,
     OtherPeer = <<2:32/unit:8>>,
     %% set a total balance of 8 
-    Trees0 = set_account(aec_accounts:new(FromPubKey, 8), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(FromPubKey, 8),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(OtherPeer, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, FromPubKey, Trees, PoI0),
@@ -508,7 +522,7 @@ check_solo_close_empty_payload_less_amounts() ->
                            , responder_amount => 5
                            , state_hash => PoIHash }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     ok =
@@ -526,7 +540,8 @@ check_solo_close_empty_payload_exact_amounts() ->
     FromPubKey = <<1:32/unit:8>>,
     OtherPeer = <<2:32/unit:8>>,
     TotalAmount = 10,
-    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(OtherPeer, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, FromPubKey, Trees, PoI0),
@@ -539,7 +554,7 @@ check_solo_close_empty_payload_exact_amounts() ->
                            , responder_amount => 2
                            , state_hash => PoIHash }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     ok =
@@ -557,7 +572,8 @@ check_solo_close_payload_wrong_channel_id() ->
     FromPubKey = <<1:32/unit:8>>,
     OtherPeer = <<2:32/unit:8>>,
     TotalAmount = 10,
-    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(OtherPeer, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, FromPubKey, Trees, PoI0),
@@ -571,7 +587,7 @@ check_solo_close_payload_wrong_channel_id() ->
                            , state_hash => PoIHash }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
     DifferentChannelPubkey = <<1:32/unit:8>>,
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     {Bin, _SignedTx, _OffChainTx} = payload(#{ channel_pubkey => DifferentChannelPubkey
@@ -592,7 +608,8 @@ check_solo_close_payload_wrong_round() ->
     OtherPeer = <<2:32/unit:8>>,
     TotalAmount = 10,
     Round = 33,
-    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(OtherPeer, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, FromPubKey, Trees, PoI0),
@@ -606,7 +623,7 @@ check_solo_close_payload_wrong_round() ->
                            , round => Round
                            , state_hash => PoIHash }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     %% round less than channel on-chain one
@@ -642,7 +659,8 @@ check_solo_close_payload_wrong_signatures() ->
     OtherPeer = <<2:32/unit:8>>,
     TotalAmount = 10,
     Round = 33,
-    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(OtherPeer, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, FromPubKey, Trees, PoI0),
@@ -656,7 +674,7 @@ check_solo_close_payload_wrong_signatures() ->
                            , round => Round
                            , state_hash => PoIHash }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     {Bin1, _, _} = payload(#{ channel_pubkey => ChannelPubKey
@@ -678,7 +696,8 @@ check_solo_close_payload_wrong_peers() ->
     {RPub, RPriv} = aecore_suite_utils:generate_key_pair(),
     TotalAmount = 10,
     Round = 33,
-    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(RPub, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     Test =
@@ -693,7 +712,7 @@ check_solo_close_payload_wrong_peers() ->
                                   , round => Round
                                   , state_hash => PoIHash }),
             ChannelPubKey = aesc_channels:pubkey(Channel),
-            OnChainTrees = set_channel(Channel, aec_trees:new()),
+            OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
             Amt = 100,
             From = IPub,
             OnChainTrees1 = set_account(aec_accounts:new(IPub, Amt), OnChainTrees),
@@ -721,7 +740,8 @@ check_solo_close_payload_wrong_amounts() ->
     {RPub, RPriv} = aecore_suite_utils:generate_key_pair(),
     TotalAmount = 10,
     Round = 33,
-    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(RPub, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, IPub, Trees, PoI0),
@@ -735,7 +755,7 @@ check_solo_close_payload_wrong_amounts() ->
                           , round => Round
                           , state_hash => PoIHash }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     From = IPub,
     OnChainTrees1 = set_account(aec_accounts:new(IPub, Amt), OnChainTrees),
@@ -760,7 +780,8 @@ check_solo_close_payload_correct() ->
     {RPub, RPriv} = aecore_suite_utils:generate_key_pair(),
     TotalAmount = 10,
     Round = 33,
-    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(RPub, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, IPub, Trees, PoI0),
@@ -774,7 +795,7 @@ check_solo_close_payload_correct() ->
                           , round => Round
                           , state_hash => PoIHash }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     From = IPub,
     OnChainTrees1 = set_account(aec_accounts:new(IPub, Amt), OnChainTrees),
@@ -800,7 +821,8 @@ check_solo_close_payload_correct_bigger_poi() ->
     OtherAccount = <<1:32/unit:8>>,
     TotalAmount = 10,
     Round = 33,
-    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees1 = set_account(aec_accounts:new(RPub, 1), Trees0),
     %% note that this makes the total amount of the accounts bigger than the
     %% total amount of tokens dedicated to the channel. Since we ignore any
@@ -818,7 +840,7 @@ check_solo_close_payload_correct_bigger_poi() ->
                           , round => Round
                           , state_hash => PoIHash }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     From = IPub,
     OnChainTrees1 = set_account(aec_accounts:new(IPub, Amt), OnChainTrees),
@@ -840,10 +862,10 @@ check_solo_close_payload_correct_bigger_poi() ->
 
 deserialize_broken_slash_payload() ->
     FromPubKey = <<42:32/unit:8>>,
-    Trees = aec_trees:new(),
+    Trees = aec_trees:new_without_backend(),
     PoI = aec_trees:new_poi(Trees),
     Channel = new_channel(),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     ChannelPubKey = aesc_channels:pubkey(Channel),
     {error, payload_deserialization_failed} =
         aesc_utils:check_slash_payload(ChannelPubKey,
@@ -868,11 +890,11 @@ deserialize_broken_slash_payload() ->
     ok.
 
 check_slash_from_a_missing_channel() ->
-    Trees = aec_trees:new(),
+    Trees = aec_trees:new_without_backend(),
     PoI = aec_trees:new_poi(Trees),
     Channel = new_channel(),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = aec_trees:new(),
+    OnChainTrees = aec_trees:new_without_backend(),
     FromPubKey = <<42:32/unit:8>>,
     {Bin, _SignedTx, _OffChainTx} = payload(#{channel_pubkey => ChannelPubKey}),
     {error, channel_does_not_exist} =
@@ -887,11 +909,11 @@ check_slash_from_a_missing_channel() ->
     ok.
 
 check_slash_payload_last_onchain() ->
-    Trees = aec_trees:new(),
+    Trees = aec_trees:new_without_backend(),
     PoI = aec_trees:new_poi(Trees),
     Channel = new_channel(),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     FromPubKey = <<42:32/unit:8>>,
     {error, slash_must_have_payload} =
         aesc_utils:check_slash_payload(ChannelPubKey,
@@ -906,12 +928,12 @@ check_slash_payload_last_onchain() ->
 
 check_slash_not_enough_funds() ->
     SoloRound = 10,
-    Trees = aec_trees:new(),
+    Trees = aec_trees:new_without_backend(),
     PoI = aec_trees:new_poi(Trees),
     Channel0 = new_channel(),
     Channel = aesc_channels:set_solo_round(Channel0, SoloRound),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     FromPubKey = <<42:32/unit:8>>,
     {Bin, _SignedTx, _OffChainTx} = payload(#{channel_pubkey => ChannelPubKey}),
     {error, account_not_found} =
@@ -937,6 +959,42 @@ check_slash_not_enough_funds() ->
                                        tx_env()),
     ok.
 
+check_slash_payload_not_closing() ->
+    FromPubKey = <<1:32/unit:8>>,
+    OtherPeer = <<2:32/unit:8>>,
+    TotalAmount = 10,
+    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
+    Trees = set_account(aec_accounts:new(OtherPeer, 1), Trees0),
+    PoI0 = aec_trees:new_poi(Trees),
+    {ok, PoI1} = aec_trees:add_poi(accounts, FromPubKey, Trees, PoI0),
+    {ok, PoI} = aec_trees:add_poi(accounts, OtherPeer, Trees, PoI1),
+    PoIHash = aec_trees:poi_hash(PoI),
+    Channel = new_channel(#{ initiator_pubkey => FromPubKey
+                           , responder_pubkey => OtherPeer
+                           %% make an onchain total balance of TotalAmount
+                           , initiator_amount => TotalAmount - 2
+                           , responder_amount => 2
+                           , state_hash => PoIHash }),
+    ChannelPubKey = aesc_channels:pubkey(Channel),
+    DifferentChannelPubkey = <<1:32/unit:8>>,
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
+    Amt = 100,
+    OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
+    {Bin, _SignedTx, _OffChainTx} = payload(#{ channel_pubkey => DifferentChannelPubkey
+                                             , state_hash => PoIHash }),
+    {error, channel_not_closing} =
+        aesc_utils:check_slash_payload(ChannelPubKey,
+                                       FromPubKey,
+                                       _Nonce = 1,
+                                       _Fee1 = Amt,
+                                        Bin,
+                                        PoI,
+                                        OnChainTrees1,
+                                        tx_env()),
+    ok.
+
+
 check_slash_not_a_peer() ->
     SoloRound = 20,
     ClosedHeight = 100,
@@ -944,14 +1002,14 @@ check_slash_not_a_peer() ->
     Channel1 = aesc_channels:set_solo_round(Channel0, SoloRound),
     Channel = aesc_channels:set_solo_closing(Channel1, ClosedHeight),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     FromPubKey = <<1:32/unit:8>>,
     %% From is not a participant
     Initiator = aesc_channels:initiator_pubkey(Channel),
     Responder = aesc_channels:responder_pubkey(Channel),
     true = Initiator =/= FromPubKey,
     true = Responder =/= FromPubKey,
-    Trees = aec_trees:new(),
+    Trees = aec_trees:new_without_backend(),
     PoI = aec_trees:new_poi(Trees),
     {Bin, _SignedTx, _OffChainTx} = payload(#{channel_pubkey => ChannelPubKey}),
     Amt = 100,
@@ -974,7 +1032,8 @@ check_slash_payload_wrong_channel_id() ->
     FromPubKey = <<1:32/unit:8>>,
     OtherPeer = <<2:32/unit:8>>,
     TotalAmount = 10,
-    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(OtherPeer, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, FromPubKey, Trees, PoI0),
@@ -990,7 +1049,7 @@ check_slash_payload_wrong_channel_id() ->
     Channel = aesc_channels:set_solo_closing(Channel1, ClosedHeight),
     ChannelPubKey = aesc_channels:pubkey(Channel),
     DifferentChannelPubkey = <<1:32/unit:8>>,
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     {Bin, _SignedTx, _OffChainTx} = payload(#{ channel_pubkey => DifferentChannelPubkey
@@ -1012,7 +1071,8 @@ check_slash_payload_wrong_round() ->
     TotalAmount = 10,
     Round = 33,
     ClosedHeight = 100,
-    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(OtherPeer, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, FromPubKey, Trees, PoI0),
@@ -1027,7 +1087,7 @@ check_slash_payload_wrong_round() ->
                             , state_hash => PoIHash }),
     Channel = aesc_channels:set_solo_closing(Channel0, ClosedHeight),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     %% round less than channel on-chain one
@@ -1064,7 +1124,8 @@ check_slash_payload_wrong_signatures() ->
     TotalAmount = 10,
     Round = 33,
     ClosedHeight = 100,
-    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(FromPubKey, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(OtherPeer, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, FromPubKey, Trees, PoI0),
@@ -1079,7 +1140,7 @@ check_slash_payload_wrong_signatures() ->
                             , state_hash => PoIHash }),
     Channel = aesc_channels:set_solo_closing(Channel0, ClosedHeight),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     {Bin1, _, _} = payload(#{ channel_pubkey => ChannelPubKey
@@ -1102,7 +1163,8 @@ check_slash_payload_wrong_peers() ->
     TotalAmount = 10,
     Round = 33,
     ClosedHeight = 100,
-    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(RPub, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     Test =
@@ -1118,7 +1180,7 @@ check_slash_payload_wrong_peers() ->
                                    , state_hash => PoIHash }),
             Channel = aesc_channels:set_solo_closing(Channel0, ClosedHeight),
             ChannelPubKey = aesc_channels:pubkey(Channel),
-            OnChainTrees = set_channel(Channel, aec_trees:new()),
+            OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
             Amt = 100,
             From = IPub,
             OnChainTrees1 = set_account(aec_accounts:new(IPub, Amt), OnChainTrees),
@@ -1147,7 +1209,8 @@ check_slash_payload_wrong_amounts() ->
     TotalAmount = 10,
     Round = 33,
     ClosedHeight = 100,
-    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(RPub, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, IPub, Trees, PoI0),
@@ -1162,7 +1225,7 @@ check_slash_payload_wrong_amounts() ->
                            , state_hash => PoIHash }),
     Channel = aesc_channels:set_solo_closing(Channel0, ClosedHeight),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     From = IPub,
     OnChainTrees1 = set_account(aec_accounts:new(IPub, Amt), OnChainTrees),
@@ -1188,7 +1251,8 @@ check_slash_payload_correct() ->
     TotalAmount = 10,
     Round = 33,
     ClosedHeight = 100,
-    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(RPub, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, IPub, Trees, PoI0),
@@ -1203,7 +1267,7 @@ check_slash_payload_correct() ->
                             , state_hash => PoIHash }),
     Channel = aesc_channels:set_solo_closing(Channel0, ClosedHeight),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     From = IPub,
     OnChainTrees1 = set_account(aec_accounts:new(IPub, Amt), OnChainTrees),
@@ -1230,7 +1294,8 @@ check_slash_payload_correct_delegate() ->
     TotalAmount = 10,
     Round = 33,
     ClosedHeight = 100,
-    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(RPub, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, IPub, Trees, PoI0),
@@ -1246,7 +1311,7 @@ check_slash_payload_correct_delegate() ->
                             , delegate_pubkeys => [DelegatePub] }),
     Channel = aesc_channels:set_solo_closing(Channel0, ClosedHeight),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     From = DelegatePub,
     OnChainTrees1 = set_account(aec_accounts:new(From, Amt), OnChainTrees),
@@ -1275,7 +1340,8 @@ check_slash_payload_correct_after_wrong_fp() ->
     ForcedProgressChainLength = 3,
     SoloRound = Round - ForcedProgressChainLength, % the first FP
     ClosedHeight = 100,
-    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1), aec_trees:new()),
+    Trees0 = set_account(aec_accounts:new(IPub, TotalAmount - 1),
+                         aec_trees:new_without_backend()),
     Trees = set_account(aec_accounts:new(RPub, 1), Trees0),
     PoI0 = aec_trees:new_poi(Trees),
     {ok, PoI1} = aec_trees:add_poi(accounts, IPub, Trees, PoI0),
@@ -1291,7 +1357,7 @@ check_slash_payload_correct_after_wrong_fp() ->
     Channel1 = aesc_channels:set_solo_round(Channel0, SoloRound),
     Channel = aesc_channels:set_solo_closing(Channel1, ClosedHeight),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     From = IPub,
     OnChainTrees1 = set_account(aec_accounts:new(IPub, Amt), OnChainTrees),
@@ -1331,7 +1397,7 @@ check_slash_payload_correct_after_wrong_fp() ->
 deserialize_broken_solo_snapshot_payload() ->
     FromPubKey = <<42:32/unit:8>>,
     Channel = new_channel(),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     ChannelPubKey = aesc_channels:pubkey(Channel),
     {error, payload_deserialization_failed} =
         aesc_utils:check_solo_snapshot_payload(ChannelPubKey,
@@ -1356,7 +1422,7 @@ deserialize_broken_solo_snapshot_payload() ->
 check_solo_snapshot_from_a_missing_channel() ->
     Channel = new_channel(),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = aec_trees:new(),
+    OnChainTrees = aec_trees:new_without_backend(),
     FromPubKey = <<42:32/unit:8>>,
     {Bin, _SignedTx, _OffChainTx} = payload(#{channel_pubkey => ChannelPubKey}),
     {error, channel_does_not_exist} =
@@ -1372,7 +1438,7 @@ check_solo_snapshot_from_a_missing_channel() ->
 check_solo_snapshot_payload_last_onchain() ->
     Channel = new_channel(),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     FromPubKey = <<42:32/unit:8>>,
     {error, snapshot_must_have_payload} =
         aesc_utils:check_solo_snapshot_payload(ChannelPubKey,
@@ -1389,7 +1455,7 @@ check_solo_snapshot_not_enough_funds() ->
     Channel0 = new_channel(),
     Channel = aesc_channels:set_solo_round(Channel0, SoloRound),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     FromPubKey = <<42:32/unit:8>>,
     {Bin, _SignedTx, _OffChainTx} = payload(#{channel_pubkey => ChannelPubKey}),
     {error, account_not_found} =
@@ -1424,7 +1490,7 @@ check_solo_snapshot_not_a_peer() ->
     true = Responder =/= FromPubKey,
     {Bin, _SignedTx, _OffChainTx} = payload(#{channel_pubkey => ChannelPubKey}),
     Amt = 100,
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     %% with non-empty payload with account present
     {error, account_not_peer} =
@@ -1446,7 +1512,7 @@ check_solo_snapshot_already_closing(FromKey) ->
     Channel0 = new_channel(#{FromKey => FromPubKey}),
     Channel = aesc_channels:set_solo_closing(Channel0, 1234),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     {Bin, _SignedTx, _OffChainTx} = payload(#{channel_pubkey => ChannelPubKey}),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
@@ -1472,7 +1538,7 @@ check_solo_snapshot_payload_wrong_channel_id() ->
                            , responder_amount => 2 }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
     DifferentChannelPubkey = <<1:32/unit:8>>,
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     {Bin, _SignedTx, _OffChainTx} = payload(#{ channel_pubkey => DifferentChannelPubkey }),
@@ -1495,7 +1561,7 @@ check_solo_snapshot_payload_wrong_round() ->
                            %% make an onchain total balance of TotalAmount
                            , round => Round }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     %% round less than channel on-chain one
@@ -1531,7 +1597,7 @@ check_solo_snapshot_payload_wrong_signatures() ->
                            %% make an onchain total balance of TotalAmount
                            , round => Round }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     OnChainTrees1 = set_account(aec_accounts:new(FromPubKey, Amt), OnChainTrees),
     {Bin1, _, _} = payload(#{ channel_pubkey => ChannelPubKey
@@ -1555,7 +1621,7 @@ check_solo_snapshot_payload_correct() ->
                           %% make an onchain total balance of TotalAmount
                           , round => Round }),
     ChannelPubKey = aesc_channels:pubkey(Channel),
-    OnChainTrees = set_channel(Channel, aec_trees:new()),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
     Amt = 100,
     From = IPub,
     OnChainTrees1 = set_account(aec_accounts:new(IPub, Amt), OnChainTrees),
@@ -1571,6 +1637,38 @@ check_solo_snapshot_payload_correct() ->
                                                Bin1,
                                                OnChainTrees1,
                                                tx_env()),
+    ok.
+
+deserialize_broken_fp_payload() ->
+    Channel = new_channel(),
+    ChannelPubKey = aesc_channels:pubkey(Channel),
+    OnChainTrees = set_channel(Channel, aec_trees:new_without_backend()),
+    %% some update that is serializable
+    Update =
+        aesc_offchain_update:op_transfer(aeser_id:create(account, <<123:32/unit:8>>),
+                                         aeser_id:create(account, <<321:32/unit:8>>),
+                                         10),
+    OffChainTrees = aec_trees:new_without_backend(),
+    AetxFPTx1 =
+        create_force_progess_tx(#{ channel_pubkey => ChannelPubKey
+                                 , payload => <<"a">>
+                                 , update => Update
+                                 , off_chain_trees => OffChainTrees }),
+    {error, payload_deserialization_failed} =
+        aesc_utils:check_force_progress(strip_aetx(AetxFPTx1),
+                                        OnChainTrees,
+                                        tx_env()),
+    SignedTx = spend_tx(),
+    Bin = aetx_sign:serialize_to_binary(SignedTx),
+    AetxFPTx2=
+        create_force_progess_tx(#{ channel_pubkey => ChannelPubKey
+                                 , payload => Bin 
+                                 , update => Update
+                                 , off_chain_trees => OffChainTrees }),
+    {error, bad_offchain_state_type} =
+        aesc_utils:check_force_progress(strip_aetx(AetxFPTx2),
+                                        OnChainTrees,
+                                        tx_env()),
     ok.
 
 
@@ -1705,3 +1803,28 @@ payload(Opts) ->
                   [IPriv, RPriv]),
     PayloadBin = aetx_sign:serialize_to_binary(SignedTx),
     {PayloadBin, SignedTx, OffChainTx}.
+
+create_force_progess_tx(#{ payload := Payload
+                         , update := Update
+                         , off_chain_trees := OffChainTrees } = Opts) ->
+    {ok, Aetx} =
+        aesc_force_progress_tx:new(
+            #{ channel_id => aeser_id:create(channel, maps:get(channel_pubkey,
+                                                               Opts,
+                                                               <<1:32/unit:8>>))
+            , from_id => aeser_id:create(account, maps:get(from_pubkey,
+                                                           Opts,
+                                                           <<2:32/unit:8>>))
+            , payload => Payload
+            , update  => Update
+            , state_hash => maps:get(state_hash, Opts,
+                                     aec_trees:hash(OffChainTrees))
+            , round      => maps:get(round, Opts, 42)
+            , offchain_trees =>  OffChainTrees
+            , fee   => maps:get(fee, Opts, 1)
+            , nonce => maps:get(nonce, Opts, 1)}),
+    Aetx.
+
+strip_aetx(Aetx) ->
+    {_, InnerTx} = aetx:specialize_callback(Aetx),
+    InnerTx.
