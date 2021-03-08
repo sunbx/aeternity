@@ -15,4 +15,5 @@ hc_enabled() ->
 submit_commitment(KeyNode, Delegate) ->
     %% TODO To substitute by the BTC call;
     C = aehc_commitment:new(aehc_commitment_header:new(Delegate, aec_block_insertion:node_hash(KeyNode)), no_pogf),
+    ok = aehc_parent_mng:commit(C),
     error(todo).
